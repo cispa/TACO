@@ -44,7 +44,8 @@ jobs:
           cargo +${RUST_VERSION} install --locked cargo-about
       - name: Generate Docs
         run: |
-          cd ./docs && myst build --html && cd ../
+          cd ./docs && myst build --html --ci --port 3042 && cd ../
+          export URL="https://taco-mc.dev" && ./scripts/replace-urls.sh
           mkdir -p ./public && mv ./docs/_build/html/* ./public/
           cargo doc --no-deps --document-private-items --workspace
           mkdir -p ./public/dev-docs && mv ./target/doc/* ./public/dev-docs/

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- replaced `localhost` reference in `sitemap.xml` and `robots.txt` (#1)
+
 ## [v0.1.0]
 
 ### Added

@@ -27,6 +27,8 @@ project:
   license:
     code: "Apache-2.0"
     content: "CC-BY-4.0"
+  github: "https://github.com/cispa/TACO"
+  source_url: "https://github.com/cispa/TACO/tree/main/docs"
   bibliography: ./references.bib
   copyright: "2026 - The TACO contributors"
   abbreviations:
@@ -52,6 +54,27 @@ project:
         - file: ./usage-cli/tla-specification.md
         - file: ./usage-cli/advanced-configuration.md
     - file: dev-docs.md
+      children:
+        - url: https://taco-mc.dev/dev-docs/taco_interval_ta/index.html
+          title: taco-interval-ta
+        - url: https://taco-mc.dev/dev-docs/taco_threshold_automaton/index.html
+          title: taco-threshold-automaton
+        - url: https://taco-mc.dev/dev-docs/taco_model_checker/index.html
+          title: taco-model-checker
+        - url: https://taco-mc.dev/dev-docs/taco_smt_model_checker/index.html
+          title: taco-smt-model-checker
+        - url: https://taco-mc.dev/dev-docs/taco_zcs_model_checker/index.html
+          title: taco-zcs-model-checker
+        - url: https://taco-mc.dev/dev-docs/taco_zcs_model_checker/index.html
+          title: taco-zcs-model-checker
+        - url: https://taco-mc.dev/dev-docs/taco_bdd/index.html
+          title: taco-bdd
+        - url: https://taco-mc.dev/dev-docs/taco_cli/index.html
+          title: taco-cli
+        - url: https://taco-mc.dev/dev-docs/taco_display_utils/index.html
+          title: taco-display-utils
+        - url: https://taco-mc.dev/dev-docs/taco_smt_encoder/index.html
+          title: taco-smt-encoder
     - file: about.md
   plugins:
     - ./resources/tla-highlighter.mjs
