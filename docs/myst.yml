@@ -65,8 +65,8 @@ project:
           title: taco-smt-model-checker
         - url: https://taco-mc.dev/dev-docs/taco_zcs_model_checker/index.html
           title: taco-zcs-model-checker
-        - url: https://taco-mc.dev/dev-docs/taco_zcs_model_checker/index.html
-          title: taco-zcs-model-checker
+        - url: https://taco-mc.dev/dev-docs/taco_acs_model_checker/index.html
+          title: taco-acs-model-checker
         - url: https://taco-mc.dev/dev-docs/taco_bdd/index.html
           title: taco-bdd
         - url: https://taco-mc.dev/dev-docs/taco_cli/index.html

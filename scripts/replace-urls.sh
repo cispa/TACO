@@ -4,6 +4,9 @@
 # and robots.txt to be valid when the site is generated in the CI and deployed
 # via GitHub actions.
 
+# Strict mode with error reporting
+set -euo pipefail
+
 if [ -z "$URL" ]; then
     echo "Error: URL environment variable is not set."
     echo "Usage: URL=\"https://your-domain.com\" $0"
