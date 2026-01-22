@@ -8,7 +8,7 @@ TACO internally uses SMT solvers for the model checking. However, it does not
 ship with any solvers by default.
 Currently, TACO will check whether Z3 or CVC5 is installed on your system. If
 you do not have a favorite SMT solver we recommend you install
-[CVC5](httsp://github.com/cvc5/cvc5) and/or [Z3](https://github.com/Z3Prover/z3).
+[CVC5](https://github.com/cvc5/cvc5) and/or [Z3](https://github.com/Z3Prover/z3).
 
 You can also use a custom SMT solver when verifying systems with TACO. You can
 find more details on how to configure a custom solver in section

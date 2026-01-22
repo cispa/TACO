@@ -64,7 +64,7 @@
     \subsection{Features for Formal Methods Experts}
     While TACO can be used as a push-button tool, based only on an input TA and a specification, its behavior can be guided through a wealth of parameters.
 
-    First, you can of course, choose which of the three model checking algorithms to use. 
+    First, you can of course choose which of the three model checking algorithms to use. 
     Moreover, TACO allows for the fine-grained configuration of the underlying SMT solvers and BDD managers, for example, to choose SMT solving heuristics.
     For specifications composed of multiple properties, you can choose whether TACO should terminate after finding the first violation or whether it should continue until all properties are verified.
 
@@ -94,7 +94,7 @@
     Our goal with the design of TACO was not only to provide an efficient implementation of model checking algorithms but also to enable others to write tools for threshold automata. 
     In this spirit, we designed TACO in a highly modular fashion. 
 
-    Most major components, such as parser and preprocessor, or different TA representations and model checking algorithms, are separated into individual Rust crates (see), and specific features are guarded by feature flags.
+    Most major components, such as parser and preprocessor, or different TA representations and model checking algorithms, are separated into individual Rust crates, and specific features are guarded by feature flags.
     This design for example allows you to easily create a new user interface by integrating the parser and one of the model checkers while not importing our CLI and the other model checking algorithms.
     Similarly, new specification formats can simply be implemented by implementing the existing parser trait.
 
