@@ -85,5 +85,5 @@ site:
     numbered_references: true
     style: ./resources/style.css
     logo: ./resources/taco-logo.webp
-    logo_text: "TACO Toolsuite for Threshold Automata"
+    logo_text: "TACO Toolsuite"
     favicon: ./resources/taco-favicon.webp
