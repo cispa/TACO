@@ -23,12 +23,12 @@ directory.
 
 :::{tip}
 Clicking on the name of a crate will forward you to Rust documentation
-of the crate, which contains the description of the external API of the crate,
-as well as more details on the implementation.
+of the crate, containing the API documentation as well as implementation
+details.
 
-These parts of the documentation will be directly derived from the
-[Rust doc comments](https://doc.rust-lang.org/rust-by-example/meta/doc.html)
-on the source code.
+Note that the documentation is also available on [docs.rs](https://docs.rs).
+However, our internal version also contains the documentation for private types,
+giving you more insights into the implementation details.
 :::
 
 ### Threshold Automaton Representations

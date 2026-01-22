@@ -2,16 +2,16 @@
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.9\textwidth]{./resources/smt-algorithm.png}
+    \includegraphics[width=\textwidth]{./resources/smt-algorithm.webp}
     \caption{Architecture of the SMT-based model checking algorithm.}\label{fig:alg-smt}
 \end{figure}
 
-Balasubramanian et al.~\citep{Balasubramanian20} showed that the reachability problem for CTA can be reduced to deciding the satisfiability of an SMT formula.
-More precisely, they construct an existential Presburger arithmetic formula $\phi_{REACH}(\sigma,\sigma')$ such that $\phi_{REACH}(\sigma,\sigma')$ holds if and only if $\sigma'$ is reachable from $\sigma$ for the given CTA.
+Balasubramanian et al.~\citep{Balasubramanian20} showed that the reachability problem for MTA can be reduced to deciding the satisfiability of an SMT formula.
+More precisely, they construct an existential Presburger arithmetic formula $\phi_{REACH}(\sigma,\sigma')$ such that $\phi_{REACH}(\sigma,\sigma')$ holds if and only if $\sigma'$ is reachable from $\sigma$ for the given MTA.
 
 A central notion in this construction is the \emph{context} of a configuration $\sigma$, defined as the set of lower guards that evaluate to true together with the upper guards that evaluate to false.
-A CTA path is called \emph{steady} if all its configurations have the same context.
-The key idea underlying the SMT-based approach is that any CTA execution with $k$ guards can be represented as the concatenation of at most $k+1$ steady paths~\citep{Balasubramanian20}.
+A MTA path is called \emph{steady} if all its configurations have the same context.
+The key idea underlying the SMT-based approach is that any MTA execution with $k$ guards can be represented as the concatenation of at most $k+1$ steady paths~\citep{Balasubramanian20}.
 Therefore, for each steady path, the formula $\phi_{REACH}(\sigma,\sigma')$ encodes several constraints: the number of times each rule is fired, the effect on the number of processes in each location, the changes to shared variables, and that each fired rule is reachable via a sequence of rules where the target location of one rule provides the source location required to fire the next, starting from a location that initially contains a process~( ``firable'' chain of rules).
 Additional base constraints ensure that parameters, total process counts, and the guard context remain consistent along the path. 
 Formally, the construction yields:\\

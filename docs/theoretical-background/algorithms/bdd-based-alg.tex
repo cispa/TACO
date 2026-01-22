@@ -2,7 +2,7 @@
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.8\textwidth]{./resources/zcs-algorithm.png}
+    \includegraphics[width=\textwidth]{./resources/zcs-algorithm.webp}
     \caption{Workflow of the ZCS model checking algorithm.}
 \end{figure}
 
@@ -33,5 +33,5 @@ If an error graph is constructed, then spuriosity checks are done breadth-first,
 
 \textbf{Usage.} To use the ZCS model checking algorithm with TACO, the user needs to specify the option \texttt{zcs} when invoking the tool from the command line.
 Additionally, the user can choose a heuristic for exploring the error graph depending on the input TA by specifying the option \texttt{--heuristic}.
-Since TACO automatically detects whether the input TA is a CTA or an ETA, this flag does not need to be set by the user to choose a suitable heuristic.
+Since TACO automatically detects whether the input TA is a MTA or an ETA, this flag does not need to be set by the user to choose a suitable heuristic.
 However, if the user wants to check only whether the error graph is empty, they can set the flag to \texttt{empty-error-graph-heuristic}.

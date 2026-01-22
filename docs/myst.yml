@@ -2,13 +2,12 @@
 version: 1
 project:
   id: 1ef2b476-ab7f-4869-bd13-7e17f203a02e
-  title: "TACO Model Checker"
+  title: "TACO Toolsuite"
   subtitle: "Model Checker for Threshold Automata"
   description: |
     "TACO is an automatic verification toolsuite for the development and \
     verification of fault-tolerant and threshold-based distributed algorithms."
-  keywords:
-    [
+  keywords: [
       taco,
       documentation,
       taco documentation,
@@ -17,6 +16,7 @@ project:
       user manual,
       verification,
       threshold automaton,
+      g
       protocol verification,
       model checking,
       distributed systems,
@@ -84,5 +84,6 @@ site:
   options:
     numbered_references: true
     style: ./resources/style.css
-    logo: ./resources/taco-org.png
-    favicon: ./resources/taco.png
+    logo: ./resources/taco-logo.webp
+    logo_text: "TACO Toolsuite for Threshold Automata"
+    favicon: ./resources/taco-favicon.webp

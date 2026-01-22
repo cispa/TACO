@@ -1,25 +1,23 @@
 # About
 
-## TACO
-
-The TACO model checker has been developed by the
+The TACO toolsuite has been developed by the
 
 [Rigorous Analysis and Design Group (RAD)](https://cispa.de/en/research/groups/jacobs)
 at the
 [CISPA - Helmholtz Center for Information Security](https://cispa.de/):
 
-- [Paul Eichler](mailto:paul.eichler@cispa.de) <a href="https://orcid.org/0009-0008-6117-318X"><img src="./resources/ORCID_iD.png" class="align-center" width="17.5px"> <a href="https://github.com/pleich"><img src="./resources/github-mark.png" class="align-center only-light" width="17.5px"><img src="./resources/github-mark-white.png" class="align-center only-dark" width="17.5px">
-- [Tom Baumeister](mailto:tom.baumeister@cispa.de) <a href="https://orcid.org/0009-0009-8539-6246"><img src="./resources/ORCID_iD.png" class="align-center" width="17.5px">
+- [Paul Eichler](mailto:paul.eichler@cispa.de) <a href="https://orcid.org/0009-0008-6117-318X"><img src="./resources/ORCID_iD.webp" class="align-center" width="17.5px"></a> <a href="https://github.com/pleich"><img src="./resources/github-mark.webp" class="align-center only-light" width="17.5px"><img src="./resources/github-mark-white.webp" class="align-center only-dark" width="17.5px"></a>
+- [Tom Baumeister](mailto:tom.baumeister@cispa.de) <a href="https://orcid.org/0009-0009-8539-6246"><img src="./resources/ORCID_iD.webp" class="align-center" width="17.5px"></a>
 - Peter Gastauer
-- Supervisor: Swen Jacobs <a href="https://orcid.org/0000-0002-9051-4050"><img src="./resources/ORCID_iD.png" class="align-center" width="17.5px">
+- Supervisor: Swen Jacobs <a href="https://orcid.org/0000-0002-9051-4050"><img src="./resources/ORCID_iD.webp" class="align-center" width="17.5px"></a>
 
 and [SnT](https://www.uni.lu/snt-en/) at
 [Luxembourg University](https://www.uni.lu):
 
-- Mouhammad Sakr (now: American University of Beirut) <a href="https://orcid.org/0000-0002-5160-0327"><img src="./resources/ORCID_iD.png" class="align-center" width="17.5px">
+- Mouhammad Sakr (now: American University of Beirut) <a href="https://orcid.org/0000-0002-5160-0327"><img src="./resources/ORCID_iD.webp" class="align-center" width="17.5px"></a>
 - Mahboubeh Kalateh Dowlati
-- Kürşat Aker <a href="https://orcid.org/0009-0005-2734-1125"><img src="./resources/ORCID_iD.png" class="align-center" width="17.5px">
-- Supervisor: Markus Völp <a href="https://orcid.org/0000-0002-8020-4446"><img src="./resources/ORCID_iD.png" class="align-center" width="17.5px">
+- Kürşat Aker <a href="https://orcid.org/0009-0005-2734-1125"><img src="./resources/ORCID_iD.webp" class="align-center" width="17.5px"></a>
+- Supervisor: Markus Völp <a href="https://orcid.org/0000-0002-8020-4446"><img src="./resources/ORCID_iD.webp" class="align-center" width="17.5px"></a>
 
 The development of TACO was funded in part by the German Research
 Foundation (DFG) grant 513487900 and the Luxembourg National Research Fund (FNR)

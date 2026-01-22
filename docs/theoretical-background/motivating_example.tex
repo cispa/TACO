@@ -42,7 +42,7 @@ The left-hand side of a lower or upper guard is called a \emph{threshold}.
 Most commonly, the parameter variables are $\Pi = \{n,t,f\}$, where $n$ is the number of processes, $t$ is a bound on the number of faulty processes, and $f$ is the actual number of faulty processes.
 This allows $RC$ to express assumptions about the fraction of faulty processes in the system, e.g., $RC = n > 3t\, \land\, t \geq f$.
 
-If $\vup \in \Nat_0^{|\Shared|}$ and no variables are reset, then the TA is called a \emph{canonical TA} (CTA). 
+If $\vup \in \Nat_0^{|\Shared|}$ and no variables are reset, then the TA is called a \emph{monotonic TA} (MTA). 
 Otherwise we call it an \emph{extended TA} (ETA)\citep{BaumeisterEJSV24}. 
 
 Note that rechability is in general undecidable for ETA~\citep{Kukovec0W18,BaumeisterEJSV24}. 
@@ -69,7 +69,7 @@ We denote by $\Paths$ the set of all paths $\pi$ in the threshold automaton.
 \vspace{-2em}
 \begin{figure}[h]
 	\centering
-	\includegraphics[width=0.8\textwidth]{resources/flood-min-pseudo}
+	\includegraphics[width=0.6\textwidth]{resources/flood-min-pseudo.webp}
 	\caption{Pseudocode of a reliable broadcast protocol.}\label{fig:alg-floodmin}
   \end{figure}
 \vspace{-1.5em}
@@ -83,7 +83,7 @@ In every round, processes with input $v=1$ will broadcast a message, then proces
 \vspace{-2em}
 \begin{figure}[h]
 	\centering
-	\includegraphics[width=0.7\textwidth]{resources/flood-min-ta}
+	\includegraphics[width=0.6\textwidth]{resources/flood-min-ta.webp}
 	\caption{Threshold automaton of the algorithm in Figure~\ref{fig:alg-floodmin}.}\label{fig:ta-floodmin}
   \end{figure}
 \vspace{-1.5em}

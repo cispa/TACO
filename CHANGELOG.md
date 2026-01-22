@@ -9,7 +9,9 @@
 
 ### Fixed
 
-- replaced `localhost` reference in `sitemap.xml` and `robots.txt` (#1)
+- doc images as `.webp` and naming of TACO (toolsuite / model checker)
+  consistent (#3)
+- replaced `localhost` reference in `sitemap.xml` and `robots.txt` (#2)
 
 ## [v0.1.0]
 

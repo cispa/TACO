@@ -12,13 +12,13 @@
     Welcome to the documentation of the Threshold Automata for COnsensus (TACO) toolsuite! 
 
     \begin{abstract}
-    TACO is a model checker designed to verify distributed protocols, for example, byzantine consensus protocols, modeled as a threshold automata (TA).
+    TACO is a toolsuite for the development and automatic verification of fault-tolerant and threshold-based distributed algorithms, for example, byzantine consensus protocols, modeled as threshold automata (TA).
 
+    Currently, TACO implements three model checkers for threshold automata, two of which can also be used for the verification of so called extended threshold automata (ETA).
     It can be used as a completely push-button tool - supply it with a TA and a specification, and it will automatically choose a model checking algorithm and check whether the specification is satisfied.
-    This allows you to model check threshold automata (and distributed algorithms in general) even if you are not an expert.
+    This allows you to verify threshold automata (and distributed algorithms in general) even if you are not an expert.
 
-    TACO features an extensively documented API, both for internal procedures as well as for the CLI.
-    In case of user errors such as faulty inputs, or if a given input is not supported by the chosen algorithm, it provides easy to read error messages in a user- and infrastructure-friendly output format via Rust's log trait.
+    Additionally, TACO is a modular, extensible, and well-documented framework for developing algorithms and tools for threshold automata. All of TACO's components are openly available and ready to use on \href{https://crates.io}{crates.io}.
     \end{abstract}
 
     \section{Organization of the Documentation}
@@ -46,7 +46,7 @@
 
     \begin{figure}[h]
         \centering
-        \includegraphics[width=0.9\textwidth]{resources/architecture-diagram}
+        \includegraphics[width=\textwidth]{resources/architecture-diagram.webp}
         \caption{Architecture of the TACO toolsuite.}\label{fig:architecture}
     \end{figure}
 
@@ -64,8 +64,8 @@
     \subsection{Features for Formal Methods Experts}
     While TACO can be used as a push-button tool, based only on an input TA and a specification, its behavior can be guided through a wealth of parameters.
 
-    First, you can of course choose which of the three model checking algorithms to use. 
-    Moreover, TACO allows for the fine-grained configuration of the underlying SMT solvers and BDD managers, for example to choose SMT solving heuristics.
+    First, you can of course, choose which of the three model checking algorithms to use. 
+    Moreover, TACO allows for the fine-grained configuration of the underlying SMT solvers and BDD managers, for example, to choose SMT solving heuristics.
     For specifications composed of multiple properties, you can choose whether TACO should terminate after finding the first violation or whether it should continue until all properties are verified.
 
     Additionally, the ZCS approach can optionally be used as a heuristic that only tries to verify safety by checking if the error graph is empty.
@@ -83,9 +83,9 @@
     Note that this may depend on the given specification, as it may specify that some of the initial locations should be empty.
 
     \subsection{Code Quality}
-    The goal of a model checker is to verify safety of a protocol, thereby increasing trust in its correctness.
+    The goal of a model checker is to verify the safety of a protocol, thereby increasing trust in its correctness.
     However, we still need to trust the verifier.
-    While we have not proven the correctness of TACO in a proof assistant, TACO uses extensive testing (around 97\% of line coverage at the time of writing) and uses software engineering best practices, such as code reviews and linting to maintain a (somehwhat) trust worthy code base. 
+    While we have not proven the correctness of TACO in a proof assistant, TACO uses extensive testing (around 97\% of line coverage at the time of writing) and uses software engineering best practices, such as code reviews and linting to maintain a (somewhat) trustworthy code base. 
 
     Additionally, TACO is written entirely in the safe fragment of Rust (simply called \emph{safe Rust}), guaranteeing memory and type safety while not adding major overhead and allowing for low-level optimizations.
 
@@ -94,7 +94,7 @@
     Our goal with the design of TACO was not only to provide an efficient implementation of model checking algorithms but also to enable others to write tools for threshold automata. 
     In this spirit, we designed TACO in a highly modular fashion. 
 
-    Most major components, such as parser and preprocessor, or different TA representations and model checking algorithms, are separated into individual Rust crates and specific features are guarded by feature flags.
+    Most major components, such as parser and preprocessor, or different TA representations and model checking algorithms, are separated into individual Rust crates (see), and specific features are guarded by feature flags.
     This design for example allows you to easily create a new user interface by integrating the parser and one of the model checkers while not importing our CLI and the other model checking algorithms.
     Similarly, new specification formats can simply be implemented by implementing the existing parser trait.
 
