@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- update the README and fix developer documentation links (#5)
 - doc images as `.webp` and naming of TACO (toolsuite / model checker)
   consistent (#3)
 - replaced `localhost` reference in `sitemap.xml` and `robots.txt` (#2)

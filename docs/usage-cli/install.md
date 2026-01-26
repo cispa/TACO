@@ -102,7 +102,7 @@ instructions of the official
 Once cargo is installed, you can install TACO by running
 
 ```bash
-cargo install taco-cli
+cargo install taco-cli --locked
 ```
 
 Now the `taco-cli` command should be available on your system. You can test the

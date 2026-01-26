@@ -17,9 +17,11 @@ It consists of two main sections:
 
 ## Crates
 
+[![Static Badge](https://img.shields.io/badge/github-repo-blue?logo=github&style=flat-square)![](https://img.shields.io/github/v/release/cispa/TACO?style=flat-square)](https://github.com/cispa/TACO)
+
 This section describes the high-level function of the crates that comprise the
-TACO toolsuite. You can find the source code for all of them in the `crates`
-directory.
+TACO toolsuite. You can find the source code for all of them in the [GitHub
+Repository](https://github.com/cispa/TACO) in the `crates` directory.
 
 :::{tip}
 Clicking on the name of a crate will forward you to Rust documentation
@@ -31,16 +33,34 @@ However, our internal version also contains the documentation for private types,
 giving you more insights into the implementation details.
 :::
 
+### Backend and Utility Crates
+
+- [`taco-bdd`](./dev-docs/taco_bdd/index.html): This library crate implements a common interface
+  to interact with BDD libraries. Currently it supports
+  [OxiDD](https://oxidd.net/) and [CUDD](https://github.com/cuddorg/cudd).
+- [`taco-cli`](./dev-docs/taco_cli/index.html): The binary crate containing the code of
+  the TACO Command Line Interface.
+- [`taco-display-utils`](./dev-docs/taco_display_utils/index.html): A small library crate for
+  common helper methods for nicely displaying types.
+- [`taco-parser`](./dev-docs/taco_parser/index.html): An interface definition of parsers that can be
+  used to parse a threshold automaton from different formats. This crate already
+  contains a parser for `.ta` and `.eta` files that has been introduced by ByMC
+  [here](https://github.com/konnov/bymc/blob/master/bymc/doc/ta-format.md).
+- [`taco-smt-encoder`](./dev-docs/taco_smt_encoder/index.html): This library crate implements
+  the configuration and setup of connections to SMT solvers. Additionally, it
+  defines SMT encodings of types of the `threshold-automaton` crate and provides
+  structures to encode constraints on configurations and paths.
+
 ### Threshold Automaton Representations
 
 These crates define different representations of threshold automata at different
 levels of abstraction, which can be used as inputs to model checkers.
 
-- [`taco-interval-ta`](./taco_interval_ta/index.html):
+- [`taco-interval-ta`](./dev-docs/taco_interval_ta/index.html):
   This library crate implements the interval abstraction of a threshold
   automaton. It contains a threshold automaton type that uses sets of
   (symbolic) intervals as guards.
-- [`taco-threshold-automaton`](./taco_threshold_automaton/index.html): This crate defines
+- [`taco-threshold-automaton`](./dev-docs/taco_threshold_automaton/index.html): This crate defines
   the types:
   - `GeneralThresholdAutomaton`, which is the most general form of a threshold
     automaton. For example, it allows comparisons between variables or guards in
@@ -54,7 +74,7 @@ levels of abstraction, which can be used as inputs to model checkers.
 
 Model checkers and specifications must implement the interfaces defined in the
 
-- [`taco-model-checker`](./taco_model_checker/index.html) crate. This library crate
+- [`taco-model-checker`](./dev-docs/taco_model_checker/index.html) crate. This library crate
   defines the common interface for model checkers, as well as some useful
   preprocessing tools that can apply useful transformations or simplifications
   to threshold automata.
@@ -62,30 +82,28 @@ Model checkers and specifications must implement the interfaces defined in the
 TACO already implements 3 algorithms, which are split into their own separate
 crates:
 
-- [`taco-acs-model-checker`](./taco_acs_model_checker/index.html): Contains the
+- [`taco-acs-model-checker`](./dev-docs/taco_acs_model_checker/index.html): Contains the
   implementation of the 'ACS' model checker.
-- [`taco-smt-model-checker`](./taco_smt_model_checker/index.html): Contains the
+- [`taco-smt-model-checker`](./dev-docs/taco_smt_model_checker/index.html): Contains the
   implementation of the 'SMT' model checker.
-- [`taco-zcs-model-checker`](./taco_zcs_model_checker/index.html): Contains the
+- [`taco-zcs-model-checker`](./dev-docs/taco_zcs_model_checker/index.html): Contains the
   implementation of the 'ZCS' model checker.
 
-### Backend and Utility Crates
+### Summary
 
-- [`taco-bdd`](./taco_bdd/index.html) : This library crate implements a common interface
-  to interact with BDD libraries. Currently it supports
-  [OxiDD](https://oxidd.net/) and [CUDD](https://github.com/cuddorg/cudd).
-- [`taco-cli`](./taco_cli/index.html): The binary crate containing the code of
-  the TACO Command Line Interface.
-- [`taco-display-utils`](./taco_display_utils/index.html): A small library crate for
-  common helper methods for nicely displaying types.
-- [`taco-parser`](./taco_parser/index.html): An interface definition of parsers that can be
-  used to parse a threshold automaton from different formats. This crate already
-  contains a parser for `.ta` and `.eta` files that has been introduced by ByMC
-  [here](https://github.com/konnov/bymc/blob/master/bymc/doc/ta-format.md).
-- [`taco-smt-encoder`](./taco_smt_encoder/index.html): This library crate implements
-  the configuration and setup of connections to SMT solvers. Additionally, it
-  defines SMT encodings of types of the `threshold-automaton` crate and provides
-  structures to encode constraints on configurations and paths.
+| Crate                    | Current Version                                                                                                                               | Docs                                                                                                                                          | Description                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| taco-acs-model-checker   | [![Crates.io](https://img.shields.io/crates/v/taco-acs-model-checker?style=flat-square)](https://crates.io/crates/taco-acs-model-checker)     | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_acs_model_checker/index.html)   | ACS Model Checker Implementation                         |
+| taco-bdd                 | [![Crates.io](https://img.shields.io/crates/v/taco-bdd?style=flat-square)](https://crates.io/crates/taco-bdd)                                 | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_bdd/index.html)                 | High-level interface for BDDs in TACO                    |
+| taco-cli                 | [![Crates.io](https://img.shields.io/crates/v/taco-cli?style=flat-square)](https://crates.io/crates/taco-cli)                                 | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_cli/index.html)                 | Command Line Interface for TACO                          |
+| taco-display-utils       | [![Crates.io](https://img.shields.io/crates/v/taco-display-utils?style=flat-square)](https://crates.io/crates/taco-display-utils)             | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_display_utils/index.html)       | Utility functions for printing string representations    |
+| taco-interval-ta         | [![Crates.io](https://img.shields.io/crates/v/taco-interval-ta?style=flat-square)](https://crates.io/crates/taco-interval-ta)                 | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_interval_ta/index.html)         | Threshold automaton with interval abstraction applied    |
+| taco-model-checker       | [![Crates.io](https://img.shields.io/crates/v/taco-model-checker?style=flat-square)](https://crates.io/crates/taco-model-checker)             | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_model_checker/index.html)       | Model Checker Interface and Specifications               |
+| taco-parser              | [![Crates.io](https://img.shields.io/crates/v/taco-parser?style=flat-square)](https://crates.io/crates/taco-parser)                           | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_parser/index.html)              | Parser implementations for threshold automata            |
+| taco-smt-encoder         | [![Crates.io](https://img.shields.io/crates/v/taco-smt-encoder?style=flat-square)](https://crates.io/crates/taco-smt-encoder)                 | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_smt_encoder/index.html)         | Utility code to setup SMT solvers and encoding functions |
+| taco-smt-model-checker   | [![Crates.io](https://img.shields.io/crates/v/taco-smt-model-checker?style=flat-square)](https://crates.io/crates/taco-smt-model-checker)     | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_smt_model_checker/index.html)   | Implementation of the SMT model checker                  |
+| taco-threshold-automaton | [![Crates.io](https://img.shields.io/crates/v/taco-threshold-automaton?style=flat-square)](https://crates.io/crates/taco-threshold-automaton) | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_threshold_automaton/index.html) | Basic types for threshold automata                       |
+| taco-zcs-model-checker   | [![Crates.io](https://img.shields.io/crates/v/taco-zcs-model-checker?style=flat-square)](https://crates.io/crates/taco-zcs-model-checker)     | [![Api Docs](https://img.shields.io/badge/docs-api-blue?style=flat-square)](https://taco-mc.dev/dev-docs/taco_zcs_model_checker/index.html)   | Implementation of the ZCS model checker                  |
 
 (development-setup)=
 
