@@ -35,7 +35,7 @@ giving you more insights into the implementation details.
 
 ### Backend and Utility Crates
 
-- [`taco-bdd`](./dev-docs/taco_bdd/index.html) : This library crate implements a common interface
+- [`taco-bdd`](./dev-docs/taco_bdd/index.html): This library crate implements a common interface
   to interact with BDD libraries. Currently it supports
   [OxiDD](https://oxidd.net/) and [CUDD](https://github.com/cuddorg/cudd).
 - [`taco-cli`](./dev-docs/taco_cli/index.html): The binary crate containing the code of
