@@ -33,7 +33,7 @@ However, our internal version also contains the documentation for private types,
 giving you more insights into the implementation details.
 :::
 
-#### Backend and Utility Crates
+### Backend and Utility Crates
 
 - [`taco-bdd`](./dev-docs/taco_bdd/index.html) : This library crate implements a common interface
   to interact with BDD libraries. Currently it supports
