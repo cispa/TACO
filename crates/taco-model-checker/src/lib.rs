@@ -224,14 +224,17 @@ where
 /// Result type for a model checking run
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModelCheckerResult {
-    /// Threshold automaton fulfills all the specification
+    /// Threshold automaton fulfills all specifications
     SAFE,
     /// Threshold automaton does not fulfill the specification
+    ///
     /// The string contains the name of the violated specification and the path
     /// is a concrete error path that serves as an example for the violation
     UNSAFE(Vec<(String, Box<Path>)>),
-    /// The model checker could not determine if the specification holds or not.
-    /// The vector contains the names of the specifications that are unknown
+    /// Model checker could not determine if the specification holds or not
+    ///
+    /// The vector contains the names of the specifications for which the result
+    /// could not be determined.
     UNKNOWN(Vec<String>),
 }
 

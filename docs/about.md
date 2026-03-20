@@ -20,7 +20,8 @@ and [SnT](https://www.uni.lu/snt-en/) at
 - Supervisor: Markus Völp <a href="https://orcid.org/0000-0002-8020-4446"><img src="./resources/ORCID_iD.webp" class="align-center" width="17.5px"></a>
 
 The development of TACO was funded in part by the German Research
-Foundation (DFG) grant 513487900 and the Luxembourg National Research Fund (FNR)
+Foundation (DFG) grant 513487900, German Research Foundation (DFG) grant
+513487900, and the Luxembourg National Research Fund (FNR)
 grant C22/IS/17432184.
 
 For the purpose of open access, and in fulfilment of the obligations arising

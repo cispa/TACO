@@ -1,4 +1,4 @@
-FROM rust:1.92-slim AS BUILD
+FROM rust:1.94-slim AS BUILD
 
 RUN apt update && apt-get install -y --no-install-recommends\
         # CUDD build dependencies

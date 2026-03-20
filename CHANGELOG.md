@@ -9,10 +9,16 @@
 
 ### Fixed
 
+- grant information for the development of TACO (#6)
 - update the README and fix developer documentation links (#5)
 - doc images as `.webp` and naming of TACO (toolsuite / model checker)
   consistent (#3)
 - replaced `localhost` reference in `sitemap.xml` and `robots.txt` (#2)
+
+### Added
+
+- Elaborate on the function of the different preprocessors (#6)
+- upgrade CI pipeline & Dockerfile to Rust 1.94
 
 ## [v0.1.0]
 

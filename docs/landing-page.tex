@@ -80,7 +80,8 @@
     This includes self-loops of the TA that do not have any effect (i.e., they do not change the value of any variable), or transition guards that are trivial because they will always be satisfied for the given resilience condition specified in the TA.
 
     Moreover, if TACO can statically determine that some locations are never reachable because they are empty initially and there are no incoming transitions from non-empty locations, then we completely remove these locations from the TA when checking the given property.
-    Note that this may depend on the given specification, as it may specify that some of the initial locations should be empty.
+    Note that this may depend on the given specification, as it may specify that some of the initial locations should be empty. 
+    You can find more information on the purpose of different preprocessors in \cref{preprocessors}.
 
     \subsection{Code Quality}
     The goal of a model checker is to verify the safety of a protocol, thereby increasing trust in its correctness.
