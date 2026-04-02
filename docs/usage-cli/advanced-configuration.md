@@ -31,7 +31,7 @@ Currently, the following preprocessors are available:
 - `DropSelfLoops`: Removes self-loops that do not contain variable updates. Such
   loops are not useful as they do not change the configuration. Therefore, they
   can be safely disregarded during verification.
-- `DropUnreachableLocations`: This preprocess does reachability analysis: It
+- `DropUnreachableLocations`: This preprocessor does reachability analysis: It
   constructs the underlying directed graph of the automaton from the initial
   states (ignoring rule guards) and removes locations that cannot be reached in
   the graph. Locations that are removed cannot be reached from any of the
@@ -46,7 +46,7 @@ Currently, the following preprocessors are available:
   This preprocessor is mostly useful after other preprocessors have already
   eliminated locations and rules.
 - `DropUnsatisfiableRules`: Removes rules with guards that can never be
-  satisfied. Analog to `ReplaceTrivialGuardsSMT`, this preprocessor uses SMT
+  satisfied. Analogous to `ReplaceTrivialGuardsSMT`, this preprocessor uses SMT
   solvers to determine whether a guard can be satisfied under the current
   resilience condition. If this is not the case, the rule is removed.
   This preprocessor has not proven effective in practice. Therefore, it is
