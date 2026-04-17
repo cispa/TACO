@@ -295,7 +295,7 @@ impl IntervalOrder for StaticIntervalOrder {
             ib_1.encode_comparison_to_boolean_expression(ComparisonOp::Eq, ib_2)
         });
 
-        let single_var_constr = self.single_var_order.iter().flat_map(|(_, intervals)| {
+        let single_var_constr = self.single_var_order.values().flat_map(|intervals| {
             intervals
                 .iter()
                 .filter(|i| i.ub() != &IntervalBoundary::Infty)
@@ -318,7 +318,7 @@ impl IntervalOrder for StaticIntervalOrder {
                 })
         });
 
-        let multi_var_constr = self.multi_var_order.iter().flat_map(|(_, intervals)| {
+        let multi_var_constr = self.multi_var_order.values().flat_map(|intervals| {
             intervals
                 .iter()
                 .filter(|i| i.ub() != &IntervalBoundary::Infty)
