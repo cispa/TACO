@@ -205,6 +205,15 @@ write_taco_bench_res () {
 # Arguments:
 #   1. Benchmark file 
 parse_and_write_n_rules_locations () {
+
+    # If LOG_TO_STDOUT then we cannot pares the number of locations and rules 
+    # because we cannot read back log file. This check prevents error messages.
+    if [ "${LOG_TO_STDOUT}" = true ]; then 
+        printf "Skipping parsing number of locations and rules as logs are sent to stdout\n"
+        return 0
+    fi
+
+
     local n_rules 
 
     local n_locations 
@@ -636,7 +645,7 @@ should roughly match the table reported in the paper.
     FAIL_ON_ERROR=true
     
     # if the default timeout has not been overwritten
-    if [ $TIMEOUT = "1h" ]; then 
+    if [ $TIMEOUT = "20m" ]; then 
         TIMEOUT='30s'
     fi
 
@@ -652,7 +661,7 @@ should roughly match the table reported in the paper.
         run_small_benchmarks acs true
     fi 
 
-    printf "\nFinished executing smoke tests"
+    printf "\nFinished executing smoke tests\n\n"
 }
 
 
@@ -725,7 +734,7 @@ This scripts supports the following options:
                         checkers (default: all) that should terminate within 5min
     -e | --extended   : Benchmark the full extended set of benchmarks (this can
                         take a lot of time!) 
-    -t | --timeout    : Override the per benchmark timeout (default: '1h')
+    -t | --timeout    : Override the per benchmark timeout (default: '20m')
     -r | --reset-only : Only execute reset benchmarks
     --mem-limit | -m : Memory limit for the execution in MB (sets `ulimit -SHv`, 
                        default: unlimited)
@@ -796,6 +805,27 @@ if [ "${ACS}" = false ] && [ "${ZCS}" = false ] && [ "${SMT}" = false ]; then
     SMT=true
 fi
 
+# Test whether permissions are correct on OUTDIR (need write + create of files)
+if [ -d "${OUTDIR}" ]; then
+    # Verify we can create files in OUTDIR
+    OUTDIR_TEST_FILE="${OUTDIR}/.taco-write-test.tmp"
+    touch "${OUTDIR_TEST_FILE}"
+    if [ ! -f "${OUTDIR_TEST_FILE}" ]; then
+        printf "Directory '${OUTDIR}' exists but is not writable / cannot create
+files in it. This error might be resolvable by adding :z after the volume mount 
+description. Check the README for details.
+
+If you chose to continue anyway, results will stay in the current working 
+directory. Sleeping 10s to give you time to abort.\n\n\n
+" 1>&2
+        OUTDIR=""
+        sleep 10
+    else
+        rm -f "${OUTDIR_TEST_FILE}"
+    fi
+fi
+
+
 # Run the smoke tests and exit
 if [ $SMOKE_TEST_ONLY = true ]; then 
     smoke_tests 
@@ -852,11 +882,11 @@ storage\n"
     fi
 
     printf "Copying the benchmark execution log '${LOGFILE}' to local storage\n"
-    cp "${LOGFILE}" "${OUTDIR}"
+    cp --backup=t "${LOGFILE}" "${OUTDIR}"
     if [ -f "${CSV_FILE_NAME}" ]; then 
         printf "Copying the benchmark result table '${CSV_FILE_NAME}' to local \
 storage\n"
-        cp "${CSV_FILE_NAME}" "${OUTDIR}"
+        cp --backup=t "${CSV_FILE_NAME}" "${OUTDIR}"
     fi
 else 
     printf "No output directory specified, or directory does not exist.\n" 

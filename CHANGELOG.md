@@ -15,11 +15,13 @@
   consistent (#3)
 - replaced `localhost` reference in `sitemap.xml` and `robots.txt` (#2)
 - fix clippy issues with 1.95 (#8)
+- remove old default timeout that caused timeout for smoke tests not be set (#9)
 
 ### Added
 
 - Elaborate on the function of the different preprocessors (#6)
 - upgrade CI pipeline & Dockerfile to Rust 1.95 (#8)
+- improved artifact evaluation README (#9)
 
 ## [v0.1.0]
 

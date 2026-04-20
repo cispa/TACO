@@ -478,6 +478,26 @@ options.\n" 1>&2
   esac
 done
 
+# Test whether permissions are correct on OUTDIR (need write + create of files)
+if [ -d "${OUTDIR}" ]; then
+    # Verify we can create files in OUTDIR
+    OUTDIR_TEST_FILE="${OUTDIR}/.taco-write-test.tmp"
+    touch "${OUTDIR_TEST_FILE}"
+    if [ ! -f "${OUTDIR_TEST_FILE}" ]; then
+        printf "Directory '${OUTDIR}' exists but is not writable / cannot create
+files in it. This error might be resolvable by adding :z after the volume mount 
+description. Check the README for details.
+
+If you chose to continue anyway, results will stay in the current working 
+directory. Sleeping 10s to give you time to abort.\n\n\n
+" 1>&2
+        OUTDIR=""
+        sleep 10
+    else
+        rm -f "${OUTDIR_TEST_FILE}"
+    fi
+fi
+
 # Make the user aware of extended setting
 if [ "${EXTENDED}" = true ]; then
     printf "Executing the extended TACO benchmark suite. This can take a lot of 
@@ -502,12 +522,12 @@ fi
 if [ -d "${OUTDIR}" ]; then
     echo "Moving the benchmark execution log '${LOGFILE}' and counterexamples 
 (which can be found in directory 'x') to local storage"
-    mv "${LOGFILE}" "${OUTDIR}"
-    cp -R ./x "${OUTDIR}"
+    cp --backup=t "${LOGFILE}" "${OUTDIR}"
+    cp --backup=t -R ./x "${OUTDIR}"
     if [ -f "${CSV_FILE_NAME}" ]; then 
         printf "Copying the benchmark result table '${CSV_FILE_NAME}' to local \
 storage\n"
-        cp "${CSV_FILE_NAME}" "${OUTDIR}"
+        cp --backup=t "${CSV_FILE_NAME}" "${OUTDIR}"
     fi
 else 
     printf "No output directory specified, or directory does not exist.

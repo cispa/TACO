@@ -2,23 +2,22 @@
 
 Welcome to the TACO model checker artifact README.
 
+This document will provide you with instructions on how to reproduce the
+benchmark results and instructions on how to access the TACO documentation.
+
+The TACO documentation contains more information on how to model and verify
+systems and protocols using TACO and on TACO's configuration options.
+Additionally, the developer documentation contains details on the internals of
+TACO. See [Section `Documentation`](#documentation) for how to access the
+documentation.
+
 ## Artifact Details
 
-**DOI artifact**: [https://doi.org/10.5281/zenodo.18233866](https://doi.org/10.5281/zenodo.18233866)
+**Paper Title**: TACO: A Toolsuite for the Verification of Threshold Automata
 
-**Paper**: "TACO: A Toolsuite for the Verification of Threshold Automata"
+**DOI artifact**: [https://doi.org/10.5281/zenodo.19659446](https://doi.org/10.5281/zenodo.19659446)
 
-**Tested on**: amd64
-
-Host OS:
-
-- Ubuntu 22.04/24.04/25.04
-- Fedora 42/43
-- Container Runtime: Podman or Docker
-
-Also tested on MacOS with arm64 running Podman, however for this setup we
-observed significantly decreased performance especially for the tool we compare
-against ([ByMC]).
+**CPU Architecture (for Evaluation)**: x86_64 (amd64)
 
 ### System Requirements
 
@@ -36,31 +35,31 @@ TACO does not have any special system requirements. However, we did not attempt
 to build the tool we compare against [ByMC] for an architecture other than x86,
 as the tool is no longer maintained.
 
-The evaluation as presented in the main section of the paper took in sum 14h
+The evaluation as presented in the main section of the paper took, in sum, 14h
 (including around 2.5h for a run of ByMC).
-
-Please be aware that the extended evaluation can take significant time, on our
-setup, all runs took in sum 90h. Therefore, having access to multiple machines
-might be beneficial.
 
 However, you can decrease the runtime and resource consumption drastically. By
 reducing the timeout per benchmark, e.g., reducing per benchmark to <= 10min,
 you can limit the overall time and resource consumption such that a considerable
 subset of benchmarks should be solvable by TACO on a decently powerful laptop
 within 8h.
-
 We will explain how to configure the timeout in the relevant sections.
 
-## Introduction
+Please be aware that the extended evaluation can take significant time. On our
+setup, all runs took in sum 90h. Therefore, having access to multiple machines
+might be beneficial.
 
-This document will only provide you with instructions on how to reproduce the
-benchmark results and instructions on how to access the TACO documentation.
+### Tested On
 
-The TACO documentation contains more information on how to model and verify
-systems and protocols using TACO, as well as all the configuration options.
-Additionally, the developer documentation contains details on the internals of
-TACO. See [Section `Documentation`](#documentation) for how to access the
-documentation.
+Host OS:
+
+- Ubuntu 22.04/24.04/25.04
+- Fedora 42/43
+- Container Runtime: Podman or Docker
+
+Also tested on MacOS with arm64 running Podman. However, for this setup, we
+observed significantly decreased performance, especially for the tool we compare,
+against ([ByMC]).
 
 ## Reproducing the Benchmark Table
 
@@ -69,9 +68,9 @@ model checkers.
 
 ### Preparation
 
-First, you need to load the container image from the files of the artifact. This
-can be done by navigating into the unzipped directory of the artifact and
-executing
+First, you need to load the evaluation container image from the files of the
+artifact. This can be done by navigating into the unzipped directory of the
+artifact and executing
 
 ```bash
 docker load -i taco.tar
@@ -87,31 +86,36 @@ docker run --rm -it localhost/taco:latest
 <details> <summary><b>Details</b></summary>
 
 - `--rm` specifies that the container will be deleted once you exit the
-  shell, and
-- `-it` starts the container in "interactive" mode, i.e., it opens the
-shell for you.
-</details>
+  shell. This removes the need to clean up old containers.
+- `-it` starts the container in "interactive" mode, i.e., it directly opens a
+shell in the container.
+</details><br>
 
-Now you can already start executing benchmarks as described in sections
-[`Smoke Tests`](#smoke-tests) and
-[`Main Evaluation Benchmark Run`](#main-evaluation-benchmark-run).
-However, the log files of such a test run will not be moved outside the
-container and therefore will be gone as soon as the container terminates.
+Now we are ready to start executing benchmarks.
+You can find the instructions to execute smoke tests in section
+[`Smoke Tests`](#smoke-tests) and the instructions for a full evaluation run in
+[`TACO Benchmark Run`](#taco-benchmark-run).
 
-##### Mounting Local Storage to Obtain Results
+Note that with the current setup, the log files of a run will not be moved
+outside the container and therefore will be gone as soon as the container
+terminates. If you prefer our evaluation scripts to automatically move log files
+outside the container onto your local storage, you can follow the instructions
+in the next section.
+
+#### Mounting Local Storage
 
 While the previously described is sufficient for running the tests, you might
-want the result tables and logfiles to be moved outside the container to
+want the result tables and log files to be moved outside the container to
 inspect them later.
 
-This can be achieved by mounting your local storage into the container using
-the `-v` flag. For example, use:
+To do so, you can mount your local storage into the container using
+the `-v` flag. For example, use
 
 ```bash
 docker run --rm -it -v ./:/storage localhost/taco:latest
 ```
 
-<details> <summary><b>Details</b></summary>
+<details> <summary><b>Details & Trouble Shooting</b></summary>
 Here, `-v ./:/storage` specifies to mount the current directory, i.e., `./` to 
 the container and makes it accessible in the running container under the 
 directory `/storage`.
@@ -121,34 +125,37 @@ option; This however should never be done in the directory `/home` or `/usr`.
 
 See [Docker Documentation](https://docs.docker.com/engine/storage/bind-mounts/#configure-the-selinux-label)
 
-</details>
+</details><br>
 
-If the directory `/storage` exists, the benchmark scripts will automatically
-move the result table(s), logfile(s) and potential crash reports to your local
-storage after all benchmarks are finished.
+Our scripts will check for the existence of the path `/storage`.
+If this directory exists, the benchmark scripts will automatically move the
+result table(s), logfile(s) and potential crash reports to your local storage
+after all benchmarks are finished.
 
 ### Smoke Tests
 
-As mentioned before, a full benchmark run can take more than 14h (or 90h
-respectively). Therefore, we include a set of smoke tests to first verify that
-TACO is running without issues.
+Before running a full benchmark run (which can take significant amounts of
+time), we recommend to test the setup with our set of smoke tests.
 
-In the shell of the TACO container, you can execute the smoke tests simply by
-running:
+In our evaluation image, this can be done by opening a shell in the TACO
+container, and executing our benchmarking script with the `--smoke` flag:
 
 ```bash
 benchmark-taco --smoke
 ```
 
 The smoke tests will execute the benchmark set "Small ByMC" with a timeout of
-30s for each model checker. Additionally, this setting will print all the output
-of TACO to the console to make any errors that might occur directly visible.
+30s for each model checker.
+
+Additionally, this setting will print all the output of TACO to the console to
+make any errors that might occur directly visible (note that in a full run the
+output will only be written to the log files to avoid cluttering stdout).
 
 The script will also create a preliminary result table called `taco-exec.csv`
 which should roughly match the results we reported in our paper for these
 benchmarks.
 
-### Main Evaluation Benchmark Run
+### TACO Benchmark Run
 
 To run the set of benchmarks used for the experimental evaluation in the
 main section of the paper with a timeout of 20min per benchmark you can simply
@@ -159,9 +166,22 @@ benchmark-taco
 ```
 
 This will run the full benchmark suite with a timeout of 20min per benchmark.
-Note that in sum such a run can take around 11.5h.
-The [next section](#setting-a-different-timeout) will describe the flags to set
-a different timeout per benchmark.
+Note that in sum, such a run can take around _14h_. To start a run that should
+complete within 8h, we recommend to lower the timeout per benchmark to a time
+<= 10min.
+
+This can be done using the `--timeout` flag, for example, use
+
+```bash
+benchmark-taco --timeout 10m
+```
+
+<details> <summary><b>Details</b></summary>
+
+The time limit must be specified in the input format of the `timeout` command,
+i.e., 3s are specified as `3s`, 3min as `3m` and 3h as `3h`.
+
+</details><br>
 
 The benchmark script will then only report time and memory statistics per
 benchmark (and errors in case any occurred). This output will also be parsed
@@ -169,23 +189,12 @@ into a CSV table named `taco-exec.csv`. This table should match the results
 reported in the paper.
 The model checker output will be written to a separate log file
 (`taco-exec.log`). Both files will be moved to your local storage in case you
-mounted it to the container (see section [Preparation](#preparation)).
+mounted it to the container under path `/storage` (see Section [Mounting Local
+Storage](#mounting-local-storage)).
 
-#### Setting a Custom Timeout
+#### Benchmarking Options
 
-For example to set a timeout of 10min per benchmark, use
-
-```bash
-benchmark-taco --timeout 10m
-```
-
-(The time must be specified in the input format of the `timeout` command, i.e.,
-3s are specified as `3s`, 3min as `3m` and 3h as `3h`).
-
-The above timeout of 10min per benchmark should be sufficient for all benchmarks
-to be completed or timed out within 8h.
-
-#### Running only a Single Model Checker
+##### Running only a Single Model Checker
 
 To run the full set of benchmarks for a single model checker, e.g., if you split
 the benchmark run across multiple machines, you can simply pass the model
@@ -198,7 +207,7 @@ use:
 benchmark-taco --smt
 ```
 
-#### Other options
+##### Other Options
 
 If your environment has the need for more configuration, e.g., we include more
 configuration options in the TACO benchmark script, which you can get an
@@ -229,10 +238,10 @@ benchmark-taco --extended --smt-solver cvc5
 
 ### ByMC
 
-Since [ByMC] has not been maintained for a few
-years now, compiling it requires installation of old versions of dependencies.
-Unfortunately, this also includes components that TACO uses, like Z3.
-Therefore we needed to package ByMC into a separate container image.
+Since [ByMC] has not been maintained for a few years now, compiling it requires
+installation of old versions of dependencies. Unfortunately, this also includes
+components that TACO uses, like Z3. To avoid conflicts, we therefore decided to
+package ByMC into a separate container image.
 
 We made the Dockerfile which we used to compile ByMC openly available on GitHub
 in the form of this [pull request](https://github.com/konnov/bymc/pull/2).
@@ -265,12 +274,11 @@ or again with
 docker run --rm -it -v ./:/storage localhost/bymc:latest
 ```
 
-If you want the logfiles to be moved to your local storage outside the
-container.
+If you want the log files to be moved to your local storage outside the
+container (see Section [Mounting Local Storage](#mounting-local-storage)).
 
-Analog to the TACO benchmarks, you can execute the set of benchmarks used in
-the evaluation section in the main part of the paper by
-running:
+Analogous to the TACO benchmarks, you can execute the set of benchmarks used in
+the evaluation section in the main part of the paper by running:
 
 ```bash
 benchmark-bymc
@@ -286,21 +294,21 @@ benchmark-bymc --timeout 10m
 
 will set a benchmark to timeout after 10min.
 
-Analog to the TACO benchmark script, the script will only report benchmark
+Analogous to the TACO benchmark script, the script will only report benchmark
 execution time and resource consumption and will store the benchmark results in
-`bymc-exec.csv` and the model checker output as a logfile called
-`bymc-exec.log`. ByMC additionally stores counter examples in the `x` directory.
+`bymc-exec.csv` and the model checker output as a log file called
+`bymc-exec.log`. ByMC additionally stores counterexamples in the `x` directory.
 
 #### Extended Evaluation Benchmark Run
 
-Analog to the TACO benchmark script, you can start an extended evaluation run
-using the `--extended` flag:
+Following the example of the TACO benchmark script, you can start an extended
+evaluation run using the `--extended` flag:
 
 ```bash
 benchmark-bymc --extended
 ```
 
-In this case, the script will directly also run ByMC in the `cav15` mode.
+Note that this script will directly run ByMC also in the `cav15` mode.
 
 ## Documentation
 
@@ -318,17 +326,28 @@ The user documentation is generated using
 
 There are multiple ways to access the documentation:
 
-- Checkout TACO's website [`taco-mc.dev`](https://taco-mc.dev) (_easiest_)
+- Check out TACO's website [`taco-mc.dev`](https://taco-mc.dev) (_easiest_)
 - Serve the documentation from the container image
-- Read the source files
+- Read the source files (packaged in the artifact and available on
+  [GitHub](https://github.com/cispa/TACO))
 - Build the documentation from scratch
 
-The first option might already display an updated page as TACO is still actively
-maintained. To get the documentation at the time of submission, you can serve
-it from the provided container image by following the instructions in the next
-section.
+The first option might already forward you to an updated page, as TACO is still
+actively maintained. To get the documentation at the time of submission, you can
+serve it from the provided container image by following the instructions in the
+next section.
+
+Additionally, TACO's source code has been published to GitHub under
+[https://github.com/cispa/TACO](https://github.com/cispa/TACO) and is available
+on `crates.io` with the source documentation therefore also available under
+`docs.rs`. The README of the source code (title page of the repository) contains
+the links to the artifacts on `crates.io` and `docs.rs`.
 
 ### Serving the Documentation from the Container
+
+We have included a preconfigured Apache server with the artifact container image
+such that you can serve the documentation from the local files without needing
+internet access.
 
 To be able to access the documentation server that will be running inside the
 TACO container, we need to publish the port `80` (which will be the port of our
@@ -356,7 +375,7 @@ the container.
 The documentation will in then case be served under the address
 [http://localhost:3001](http://localhost:3001).
 
-</details>
+</details><br>
 
 You can now start the
 documentation server by executing (and leaving the shell open)
@@ -390,6 +409,19 @@ in the file `src/docs/dev-docs.md` in the sections
 `Building the Developer Documentation` and
 `Displaying & Editing the User Documentation`.
 
+## Running & Using TACO
+
+If you want to test out the TACO CLI in the image we provided, you can call TACO
+by simply using
+
+```bash
+taco-cli
+```
+
+as TACO has been correctly installed in the container image. The [User Guide
+CLI](https://taco-mc.dev/usage-cli/) will provide you with more information on
+how to use TACO with other examples and on TACO's configuration options.
+
 ## Additional Contents of the Artifact
 
 We have included the full source code of TACO inside this artifact in the `src`
@@ -399,21 +431,11 @@ repository](https://github.com/cispa/TACO).
 You will also be able to find the Dockerfiles, scripts, documentation, etc. in
 the `src` directory.
 
-### Running TACO
-
-If you want to test out the TACO CLI in the image we provided, you can call TACO
-by simply using
-
-```bash
-taco-cli
-```
-
-as TACO has been correctly installed in the container image.
-
 ## Benchmarking Considerations
 
 This section will elaborate on some choices that were made when designing the
-outlined benchmarking process for this artifact evaluation.
+outlined benchmarking process for this artifact evaluation. It is intended to
+document our methodology and can be considered optional for artifact evaluation.
 
 ### Metrics & Limits during Evaluation
 
@@ -421,11 +443,11 @@ The benchmarking scripts always report the elapsed real-time and maximal
 resident set size as reported by the GNU `time` command.
 
 Additionally, we use the `timeout` command to stop benchmark runs that exceed
-the maximal runtime. In our evaluation we set the timeout to 20min.
+the maximal runtime. In our evaluation, we set the timeout to 20min.
 
 The memory limit was set using `ulimit -SHv`, i.e., we limited the memory
 consumption by setting a limit on the virtual memory the model checkers are
-allowed to use. For the evaluation the limit was set to `2071552`MB.
+allowed to use. For the evaluation, the limit was set to `2071552`MB.
 
 We conducted our evaluation on Dell R6525 nodes equipped with 2x AMD Epyc 7773x
 with 128 physical cores + 128 Simultaneous Multithreading and 2TB of RAM.
@@ -456,12 +478,12 @@ There were two main reasons why we chose to build our own Dockerfile instead:
 - Cumbersome benchmark process. The ByMC VM is based on Debian 9 and by now is
   difficult to work with. For example, in our testing the guest additions
   (providing functionality like shared folders, drag and drop) did not work
-  properly, making file transfer difficult. We would have not been able to
+  properly, making file transfer difficult. We would not have been able to
   provide the reviewers with the same level of automation as with the current
   container-based method.
 - Even older dependencies. The VM comes, for example, with [Z3] `4.4.1` (released
   Oct 5th 2015 on
-  [GitHub](https://github.com/Z3Prover/z3/releases/tag/z3-4.4.1)) installed
+  [GitHub](https://github.com/Z3Prover/z3/releases/tag/z3-4.4.1)) installed,
   which is three years older than the version of [Z3] we were able to use in
   the container image, which is `4.7.1` (released May 23rd 2018 on
   [GitHub](https://github.com/Z3Prover/z3/releases/tag/z3-4.7.1)).
@@ -484,10 +506,10 @@ the benchmarks in the folder `isola18/ta-(handcoded)` for
 - `c1cs.ta`
 - `cf1s.ta`
 
-this mode reported the benchmarks to be unsafe, even though all other model
-checkers (including ByMC in the `isola18` mode) report them as save.
+This mode reported the benchmarks to be unsafe, even though all other model
+checkers (including ByMC in the `isola18` mode) report them as safe.
 
-Here is an example of the counter example ByMC reports for `bosco.ta`:
+Here is an example of the counterexample ByMC reports for `bosco.ta`:
 
 ```
 ----------------
@@ -505,19 +527,19 @@ Here is an example of the counter example ByMC reports for `bosco.ta`:
  Gute Nacht. Spokoinoy nochi. Laku noch.
 ```
 
-This counter example should represent a counter example to the property
+This counterexample should represent a counterexample to the property
 
 ```
 lemma4_0: []((locD0 != 0) -> (locU1 == 0));
 ```
 
-i.e. this should be a run that satisfies the negation, i.e.:
+i.e., this should be a run that satisfies the negation, i.e.:
 
 ```
 <>((locD0 != 0)  && (locU1 != 0))
 ```
 
-analyze the example. Configuration `1` has the variable state
+We analyze the example. Configuration `1` has the variable state
 `nsnt0 := 3; nsnt01 := 3;`.
 The only rule incrementing `nsnt0` and `nsnt01` as in
 configuration 1 is:
@@ -547,7 +569,7 @@ executing rule `6`:
       do { unchanged(nsnt0, nsnt1, nsnt01); };
 ```
 
-Substituting with the parameter assignment of the counter example `N := 4; 
+Substituting with the parameter assignment of the counterexample `N := 4; 
 T := 1; F := 1;`:
 
 ```
@@ -576,7 +598,7 @@ Therefore, either
 - or some processes must be able to reach `loc1`, which is impossible as `loc1`
   has no incoming rules.
 
-Therefore no process can transition to `locU1` and the counter example is
+Therefore no process can transition to `locU1` and the counterexample is
 invalid.
 
 We saw this behavior in the official ByMC VM
