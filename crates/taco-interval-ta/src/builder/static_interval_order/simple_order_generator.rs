@@ -336,7 +336,7 @@ impl IncompleteOrder {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                Ok(ctx.get_smt_solver().and_many(smt_borders.into_iter()))
+                Ok(ctx.get_smt_solver().and_many(smt_borders))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -376,7 +376,7 @@ impl IncompleteOrder {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                Ok::<_, SMTSolverError>(ctx.get_smt_solver().and_many(eq_exprs.into_iter()))
+                Ok::<_, SMTSolverError>(ctx.get_smt_solver().and_many(eq_exprs))
             })
             .collect::<Result<Vec<_>, _>>()?;
 

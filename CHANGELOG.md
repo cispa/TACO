@@ -14,11 +14,12 @@
 - doc images as `.webp` and naming of TACO (toolsuite / model checker)
   consistent (#3)
 - replaced `localhost` reference in `sitemap.xml` and `robots.txt` (#2)
+- fix clippy issues with 1.95 (#8)
 
 ### Added
 
 - Elaborate on the function of the different preprocessors (#6)
-- upgrade CI pipeline & Dockerfile to Rust 1.94
+- upgrade CI pipeline & Dockerfile to Rust 1.95 (#8)
 
 ## [v0.1.0]
 
