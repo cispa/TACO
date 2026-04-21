@@ -628,7 +628,7 @@ checker '${1}'\n\n\n" | tee -a "${LOGFILE}"
 smoke_tests () {
     printf "Executing the smoke tests
 
-This mode will execute the 'Small ByMC' benchmarks for all of the selected model 
+This mode will execute the 'ByMC Handcoded ISOLA18' benchmarks for all of the selected model 
 checkers and print the output of the model checker to stdout. All of these 
 benchmarks should be reported to be safe, and most benchmark should finish 
 within the 30s timeout set for this benchmark run by default.

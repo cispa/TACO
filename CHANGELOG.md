@@ -22,6 +22,7 @@
 - Elaborate on the function of the different preprocessors (#6)
 - upgrade CI pipeline & Dockerfile to Rust 1.95 (#8)
 - improved artifact evaluation README (#9)
+- artifact README in CAV format (#9)
 
 ## [v0.1.0]
 

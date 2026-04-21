@@ -24,6 +24,8 @@ EXECUTABLE="${EXECUTABLE:=./bymc/verify}"
 # Configure whether to run the specified model checkers on the extended set of
 # benchmarks
 EXTENDED="${EXTENDED:=false}"
+# Smoke Test Run
+SMOKE="${SMOKE:=false}"
 
 
 ################################################################################
@@ -423,6 +425,32 @@ run_rb_wo_reset_benchmarks () {
 }
 
 
+# Execute the smoke tests
+smoke_tests () {
+    printf "Executing the smoke tests
+
+This mode will execute the 'ByMC Handcoded ISOLA18' benchmarks for ByMC. All of 
+these benchmarks should be reported to be safe, and some benchmarks should 
+finish within the 30s timeout set for this benchmark run by default.
+
+(In case all dependencies are met,) this script will also produce a table 
+summarizing the results in a CSV file called '${CSV_FILE_NAME}'. The table 
+should roughly match the table reported in the paper.
+"
+    LOGFILE=/dev/null
+    FAIL_ON_ERROR=true
+    
+    # if the default timeout has not been overwritten
+    if [ $TIMEOUT = "20m" ]; then 
+        TIMEOUT='30s'
+    fi
+
+    run_small_benchmarks "-O schema.tech=ltl" "ltl"
+
+    printf "\nFinished executing smoke tests\n\n"
+}
+
+
 
 ################################################################################
 ### Main functionality of the benchmarking script
@@ -448,13 +476,20 @@ while [ $# -gt 0 ]; do
         LOGFILE=/dev/null
         shift # past argument
         ;;
+    -s|--smoke)
+        SMOKE=true
+        LOG_TO_STDOUT=true
+        shift # past argument
+        ;;
     -h|--help)
         printf "ByMC Benchmark Script help
 
 This is the ByMC benchmark script designed to benchmark the ByMC model checker.
 This scripts supports the following options:
     -h | --help     : Print this message
-    -t | --timeout  : Override the per benchmark timeout (default: '1h')
+    -t | --timeout  : Override the per benchmark timeout (default: '20min')
+    -s | --smoke      : Execute a small set of benchmarks for the specified model 
+                        checkers (default: all) that should terminate within 5min
     -e | --extended   : Benchmark the full extended set of benchmarks (this can
                         take a lot of time!) 
     --log-to-stdout : Print the logs of the model checker to stdout instead of 
@@ -496,6 +531,12 @@ directory. Sleeping 10s to give you time to abort.\n\n\n
     else
         rm -f "${OUTDIR_TEST_FILE}"
     fi
+fi
+
+# Run the smoke tests and exit
+if [ $SMOKE = true ]; then 
+    smoke_tests 
+    exit 0
 fi
 
 # Make the user aware of extended setting
