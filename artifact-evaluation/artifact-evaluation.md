@@ -30,7 +30,7 @@
   for Rust) by following the installation guide on the TACO webpage.
   Alternatively, users can also utilize the container images provided on GitHub.
 
-  The TACO documentation describes how to use and configure TACO and it
+  The TACO documentation describes how to use and configure TACO, and it
   provides details on TACO's architecture and implementation.
 
   All of TACO's modules, i.e., Rust crates, are available on `crates.io` enabling
@@ -80,8 +80,10 @@ artifact and executing
 docker load -i taco.tar
 ```
 
-This will load the image `localhost/taco:latest` onto your machine. Now you can
-start a container and open a shell in the container using
+This will load the image `localhost/taco:latest` onto your machine. This step
+only needs to be done once, the image will stay available on your machine.
+
+Now you can start a container and open a shell in the container using
 
 ```bash
 docker run --rm -it localhost/taco:latest
@@ -119,8 +121,9 @@ Here, `-v ./:/storage` specifies to mount the current directory, i.e., `./` to
 the container and makes it accessible in the running container under the 
 directory `/storage`.
 
-If your machine has SELinux configured, you might have to append the `:z` see
-option; This however should never be done in the directory `/home` or `/usr`.
+If your machine has SELinux configured, you might have to append the SELinux
+option `:z`; however, this should never be done in the directory `/home` or
+`/usr`.
 
 See [Docker Documentation](https://docs.docker.com/engine/storage/bind-mounts/#configure-the-selinux-label)
 
@@ -128,16 +131,16 @@ See [Docker Documentation](https://docs.docker.com/engine/storage/bind-mounts/#c
 
 Our scripts will check for the existence of the path `/storage`.
 If this directory exists, the benchmark scripts will automatically move the
-result table(s), logfile(s) and potential crash reports to your local storage
+result table(s), log file(s) and potential crash reports to your local storage
 after all benchmarks are finished.
 
 ### Running TACO Smoke Tests
 
 Before running a full benchmark run (which can take significant amounts of
-time), we recommend to test the setup with our set of smoke tests.
+time), we recommend testing the setup with our set of smoke tests.
 
 In our evaluation image, this can be done by opening a shell in the TACO
-container, and executing our benchmarking script with the `--smoke` flag:
+container and executing our benchmarking script with the `--smoke` flag:
 
 ```bash
 benchmark-taco --smoke
@@ -148,7 +151,7 @@ timeout of 30s for each model checker.
 
 Additionally, this setting will print all the output of TACO to the console to
 make any errors that might occur directly visible (note that in a full run the
-output will only be written to the log files to avoid cluttering stdout).
+output will only be written to the log file to avoid cluttering stdout).
 
 The script will also create a preliminary result table called `taco-exec.csv`
 which should roughly match the results we reported in our paper for these
@@ -167,7 +170,8 @@ We made the Dockerfile which we used to compile ByMC openly available on GitHub
 in the form of this [pull request](https://github.com/konnov/bymc/pull/2).
 We built the image included in this artifact from the same Dockerfile, only
 adding additional steps to include the benchmark files and a convenient
-benchmark script.
+benchmark script (the exact Dockerfile the image was derived from can be found
+under `./src/artifact-evaluation/ByMC-Dockerfile`).
 
 > **Note**
 >
@@ -181,8 +185,10 @@ using
 docker load -i bymc.tar
 ```
 
-which will load the image `localhost/bymc:latest` onto your machine. Now you can
-start a container and open a shell using this image using
+which will load the image `localhost/bymc:latest` onto your machine. This step
+only needs to be done once, the image will stay available on your machine.
+
+Now you can start a container and open a shell using this image using
 
 ```bash
 docker run --rm -it localhost/bymc:latest
@@ -257,7 +263,7 @@ Storage](#mounting-local-storage)).
 
 #### Benchmarking Options
 
-##### Running only a Single Model Checker
+##### Running Only a Single Model Checker
 
 To run the full set of benchmarks for a single model checker, e.g., if you split
 the benchmark run across multiple machines, you can simply pass the model
@@ -291,7 +297,7 @@ benchmark-taco --extended
 ```
 
 This flag will execute the complete set of benchmarks **with only one SMT
-solver**. By default this will be [Z3]. To obtain the results with `cvc5` as
+solver**. By default, this will be [Z3]. To obtain the results with `cvc5` as
 SMT solver, you need to start an additional run and additionally set the
 `--smt-solver` flag set to `cvc5`:
 
@@ -312,7 +318,7 @@ benchmark-bymc
 ```
 
 This will start ByMC in the default (`popl17`) mode with the same timeout of
-20min. A full benchmark run in this case took us around 8h.
+20min. A full benchmark run in this case took us around 6.5h.
 
 Again, you can lower the timeout by using the `--timeout` flag. For example:
 
@@ -385,9 +391,9 @@ such that you can serve the documentation from the local files without needing
 internet access.
 
 To be able to access the documentation server that will be running inside the
-TACO container, we need to publish the port `80` (which will be the port of our
-server will be serving the documentation) of the container by additionally using
-the `--publish` flag.
+TACO container, we need to publish the port `80` (which will be the port our
+server will be serving the documentation on) of the container by additionally
+using the `--publish` flag.
 
 ```
 docker run --rm -it --publish 3000:80 localhost/taco
@@ -397,7 +403,7 @@ This command will start a shell in the container while also mapping the port
 `80` of the container to port `3000` of the host.
 
 <details> <summary><b>In Case of Errors</b></summary>
-IT might happen that you get an error of the form
+It might happen that you get an error of the form
 
 ```bash
 Failed to bind port 3000 (Address already in use)
@@ -407,7 +413,7 @@ In this case, a different application is already using the port `3000` on your
 local machine and you can just use a different port, e.g., `3001` when starting
 the container.
 
-The documentation will in then case be served under the address
+The documentation will in that case be served under the address
 [http://localhost:3001](http://localhost:3001).
 
 </details><br>
@@ -425,7 +431,7 @@ documentation.
 
 Internally, the `serve-docs` command simply starts
 [`Apache2`](https://httpd.apache.org/) which serves the static HTML file under
-`/var/html/www`.
+`/var/www/html`.
 
 #### Source Files
 
