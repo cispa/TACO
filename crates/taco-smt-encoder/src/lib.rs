@@ -508,21 +508,16 @@ fn get_smt_solver_version(cmd: &str) -> Result<(i32, i32, i32), GetVersionError>
 /// This function attempts to parse the version number from the output of the
 /// `--version` command.
 ///
-/// Note that this function will return a `ParseVersionError` if the output does
-/// not contain the version in the form of "... version x.y.z ..."
+/// The version is the first whitespace-separated token of the form "x.y.z".
+/// Returns a `ParseVersionError` if no such token exists.
 fn parse_smt_solver_version(version_output: &str) -> Result<(i32, i32, i32), GetVersionError> {
-    let version_prefix = "version ";
-    if let Some(start) = version_output.find(version_prefix) {
-        let start = start + version_prefix.len();
-        if let Some(end) = version_output[start..].find([' ', '\n', '\t']) {
-            let version_str = &version_output[start..start + end];
-            let parts: Vec<&str> = version_str.split('.').collect();
-            if parts.len() == 3
-                && let (Ok(major), Ok(minor), Ok(patch)) =
-                    (parts[0].parse(), parts[1].parse(), parts[2].parse())
-            {
-                return Ok((major, minor, patch));
-            }
+    for token in version_output.split_whitespace() {
+        let parts: Vec<&str> = token.split('.').collect();
+        if parts.len() == 3
+            && let (Ok(major), Ok(minor), Ok(patch)) =
+                (parts[0].parse(), parts[1].parse(), parts[2].parse())
+        {
+            return Ok((major, minor, patch));
         }
     }
 
@@ -711,6 +706,58 @@ warranty information.
 
         let got = parse_smt_solver_version(out);
         assert_eq!(got, Ok((1, 2, 0)))
+    }
+
+    #[test]
+    fn test_cvc5_parse_version_3() {
+        let out = "\
+Could not read history from /root/.cvc5_history_smtlib2: No such file or directory
+cvc5 1.4.0 [git b432cd7 on branch HEAD]
+compiled as a unrestricted build with GCC version 11.4.0 on Sep 17 2026 21:14:31
+
+Copyright (c) 2009-2026 by the authors and their institutional
+affiliations listed at https://cvc5.github.io/people.html
+
+cvc5 is open-source and is covered by the BSD license (modified).
+
+THIS SOFTWARE IS PROVIDED AS-IS, WITHOUT ANY WARRANTIES.
+USE AT YOUR OWN RISK.
+
+This version of cvc5 is linked against the following non-(L)GPL'ed
+third party libraries.
+
+  CaDiCaL - Simplified Satisfiability Solver
+  See https://github.com/arminbiere/cadical for copyright information.
+
+  Editline Library
+  See https://thrysoee.dk/editline
+  for copyright information.
+
+  SymFPU - The Symbolic Floating Point Unit
+  See https://github.com/martin-cs/symfpu/tree/main for copyright information.
+
+This version of cvc5 is linked against the following third party
+libraries covered by the LGPLv3 license.
+See licenses/lgpl-3.0.txt for more information.
+
+  GMP - Gnu Multi Precision Arithmetic Library
+  See http://gmplib.org for copyright information.
+
+  LibPoly polynomial library
+  See https://github.com/SRI-CSL/libpoly for copyright and
+  licensing information.
+
+cvc5 is statically linked against these libraries. To recompile
+this version of cvc5 with different versions of these libraries
+follow the instructions on https://github.com/cvc5/cvc5/blob/main/INSTALL.md
+
+See the file COPYING (distributed with the source code, and with
+all binaries) for the full cvc5 copyright, licensing, and (lack of)
+warranty information.
+";
+
+        let got = parse_smt_solver_version(out);
+        assert_eq!(got, Ok((1, 4, 0)))
     }
 
     #[test]

@@ -166,31 +166,16 @@ skel Proc {
 
     /* fast convergence */
     fast0:
-        (((F == 0 && N > 5 * T) || (N > 7 * T))
-            && <>[](((nsnt01 < THRESH1)
-            || (2 * nsnt0 < THRESH2)
-            || locS0 == 0)
-                    && loc0 == 0 && loc1 == 0))
-        ->
         (loc1 == 0
             -> <>(loc0 == 0 && loc1 == 0 && locS0 == 0 && locS1 == 0
                     && locD1 == 0 && locU0 == 0 && locU1 == 0));
     fast1:
-        (((F == 0 && N > 5 * T) || (N > 7 * T))
-            && <>[](((nsnt01 < THRESH1)
-            || (2 * nsnt1 < THRESH2)
-            || locS1 == 0)
-                    && loc0 == 0 && loc1 == 0))
-        ->
         (loc0 == 0
             -> <>(loc0 == 0 && loc1 == 0 && locS0 == 0 && locS1 == 0
                     && locD0 == 0 && locU0 == 0 && locU1 == 0));
 
     /* convergence (either fast or slow) */
     termination:
-        (<>[](((nsnt01 < THRESH1) || (locS0 == 0 && locS1 == 0))
-            && loc0 == 0 && loc1 == 0))
-        ->
         <>(loc0 == 0 && loc1 == 0 && locS0 == 0 && locS1 == 0);
   }
 } /* Proc */

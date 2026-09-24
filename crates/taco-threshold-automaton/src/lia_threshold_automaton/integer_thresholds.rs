@@ -22,18 +22,19 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
+    error::Error,
     fmt::{self},
+    hash::Hash,
+    ops,
 };
 
 use crate::{
     expressions::{
-        Atomic, BooleanExpression, ComparisonOp, IntegerExpression, Location, Parameter, Variable,
-        fraction::Fraction,
+        And, Atomic, BooleanExpression, ComparisonOp, IntegerExpression, Location, Or, Parameter,
+        Variable, fraction::Fraction,
     },
-    lia_threshold_automaton::{
-        ConstraintRewriteError,
-        general_to_lia::classify_into_lia::split_pairs_into_atom_and_threshold,
-    },
+    lia_threshold_automaton::ConstraintRewriteError,
+    lia_threshold_automaton::general_to_lia::classify_into_lia::split_pairs_into_atom_and_threshold,
 };
 
 /// Weighted sum of [`Atomic`] values
@@ -339,16 +340,6 @@ impl Threshold {
         }
     }
 
-    /// This function is designed to rewrite an comparison expression into a form
-    /// where the returned `HashMap<T, Fraction>` forms the new lhs of the equation
-    /// and the returned threshold is the right hand side of the equation
-    pub fn from_integer_comp_expr<T: Atomic>(
-        lhs: IntegerExpression<T>,
-        rhs: IntegerExpression<T>,
-    ) -> Result<(HashMap<T, Fraction>, Threshold), ConstraintRewriteError> {
-        split_pairs_into_atom_and_threshold(lhs, rhs)
-    }
-
     /// Create a new [`Threshold`] from a constant without any parameters
     pub fn from_const<T: Into<Fraction>>(c: T) -> Self {
         Self {
@@ -397,6 +388,58 @@ impl Threshold {
     }
 }
 
+impl ops::Add for Threshold {
+    type Output = Threshold;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let constant = self.constant + rhs.constant;
+        let mut ws = self.weighted_parameters;
+
+        rhs.weighted_parameters
+            .weight_map
+            .into_iter()
+            .for_each(|(p, s)| {
+                ws.weight_map
+                    .entry(p)
+                    .and_modify(|existing| *existing += s)
+                    .or_insert(s);
+            });
+
+        ws.weight_map.retain(|_, f| !f.is_zero());
+
+        Self {
+            weighted_parameters: ws,
+            constant,
+        }
+    }
+}
+
+impl ops::Sub for Threshold {
+    type Output = Threshold;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let constant = self.constant - rhs.constant;
+        let mut ws = self.weighted_parameters;
+
+        rhs.weighted_parameters
+            .weight_map
+            .into_iter()
+            .for_each(|(p, s)| {
+                ws.weight_map
+                    .entry(p)
+                    .and_modify(|existing| *existing -= s)
+                    .or_insert(-s);
+            });
+
+        ws.weight_map.retain(|_, f| !f.is_zero());
+
+        Self {
+            weighted_parameters: ws,
+            constant,
+        }
+    }
+}
+
 impl fmt::Display for Threshold {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.weighted_parameters.is_zero() {
@@ -417,8 +460,21 @@ impl fmt::Display for Threshold {
 pub enum ThresholdCompOp {
     /// >=
     Geq,
+    /// >
+    Gt,
     /// <
     Lt,
+    /// <=
+    Leq,
+}
+
+impl ThresholdCompOp {
+    /// Check whether the operator is not satisfied exactly at the threshold
+    /// but at its neighbors (`>` and `<=`), i.e., whether an interval
+    /// abstraction needs an exact interval `[t, t]` for the threshold `t`
+    pub fn needs_exact_interval(&self) -> bool {
+        matches!(self, ThresholdCompOp::Gt | ThresholdCompOp::Leq)
+    }
 }
 
 impl From<ThresholdCompOp> for ComparisonOp {
@@ -426,6 +482,8 @@ impl From<ThresholdCompOp> for ComparisonOp {
         match value {
             ThresholdCompOp::Geq => ComparisonOp::Geq,
             ThresholdCompOp::Lt => ComparisonOp::Lt,
+            ThresholdCompOp::Gt => ComparisonOp::Gt,
+            ThresholdCompOp::Leq => ComparisonOp::Leq,
         }
     }
 }
@@ -435,6 +493,8 @@ impl fmt::Display for ThresholdCompOp {
         match self {
             ThresholdCompOp::Geq => write!(f, ">="),
             ThresholdCompOp::Lt => write!(f, "<"),
+            ThresholdCompOp::Gt => write!(f, ">"),
+            ThresholdCompOp::Leq => write!(f, "<="),
         }
     }
 }
@@ -476,12 +536,16 @@ impl ThresholdConstraint {
         if factor.is_negative() {
             match self.0 {
                 ThresholdCompOp::Geq => {
-                    self.0 = ThresholdCompOp::Lt;
-                    self.1.add_const(1);
+                    self.0 = ThresholdCompOp::Leq;
                 }
                 ThresholdCompOp::Lt => {
+                    self.0 = ThresholdCompOp::Gt;
+                }
+                ThresholdCompOp::Gt => {
+                    self.0 = ThresholdCompOp::Lt;
+                }
+                ThresholdCompOp::Leq => {
                     self.0 = ThresholdCompOp::Geq;
-                    self.1.sub_const(1);
                 }
             }
         }
@@ -506,22 +570,83 @@ impl fmt::Display for ThresholdConstraint {
     }
 }
 
+/// Trait that needs to implemented by expressions which can be derived from
+/// thresholds and scaled expressions of type `T`
+pub trait DeriveFromIntegerComp<T: Atomic, E: Error + From<ConstraintRewriteError>>
+where
+    Self: Sized + And + Or,
+{
+    /// Derive from threshold and map scaled values of `T`
+    fn form_ordered_constr(
+        scaled_t: HashMap<T, Fraction>,
+        thr_c: ThresholdConstraint,
+    ) -> Result<Self, E>;
+
+    /// Derive the the type T from the integer expression
+    fn from_integer_expr(
+        lhs: IntegerExpression<T>,
+        op: ComparisonOp,
+        rhs: IntegerExpression<T>,
+    ) -> Result<Self, E> {
+        match op {
+            ComparisonOp::Gt => {
+                let op = ThresholdCompOp::Gt;
+
+                let (variables, thr) = split_pairs_into_atom_and_threshold(lhs, rhs)?;
+                let thr_c = ThresholdConstraint::new_from_thr(op, thr);
+                Self::form_ordered_constr(variables, thr_c)
+            }
+            ComparisonOp::Geq => {
+                let (variables, thr) = split_pairs_into_atom_and_threshold(lhs, rhs)?;
+                let thr_c = ThresholdConstraint::new_from_thr(ThresholdCompOp::Geq, thr);
+                Self::form_ordered_constr(variables, thr_c)
+            }
+            ComparisonOp::Leq => {
+                let op = ThresholdCompOp::Leq;
+
+                let (variables, thr) = split_pairs_into_atom_and_threshold(lhs, rhs)?;
+                let thr_c = ThresholdConstraint::new_from_thr(op, thr);
+
+                Self::form_ordered_constr(variables, thr_c)
+            }
+            ComparisonOp::Lt => {
+                let (variables, thr) = split_pairs_into_atom_and_threshold(lhs, rhs)?;
+                let thr_c = ThresholdConstraint::new_from_thr(ThresholdCompOp::Lt, thr);
+                Self::form_ordered_constr(variables, thr_c)
+            }
+            ComparisonOp::Eq => {
+                let lower_constr =
+                    Self::from_integer_expr(lhs.clone(), ComparisonOp::Leq, rhs.clone())?;
+                let upper_constr =
+                    Self::from_integer_expr(lhs.clone(), ComparisonOp::Geq, rhs.clone())?;
+
+                Ok(lower_constr.and(upper_constr))
+            }
+            ComparisonOp::Neq => {
+                let lower_constr =
+                    Self::from_integer_expr(lhs.clone(), ComparisonOp::Lt, rhs.clone())?;
+                let upper_constr =
+                    Self::from_integer_expr(lhs.clone(), ComparisonOp::Gt, rhs.clone())?;
+
+                Ok(lower_constr.or(upper_constr))
+            }
+        }
+    }
+}
+
 /// This struct represents a [`Threshold`] constraint over an object of type T
 ///
 /// It is used to, for example, represent a threshold guard over a variable
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct ThresholdConstraintOver<T> {
-    variable: T,
+    t: T,
     thr_constr: ThresholdConstraint,
 }
 
 impl<T> ThresholdConstraintOver<T> {
     /// Create a new symbolic constraint over an object of type `T`
-    pub fn new(variable: T, thr_constr: ThresholdConstraint) -> Self {
-        Self {
-            variable,
-            thr_constr,
-        }
+    pub fn new(t: T, thr_constr: ThresholdConstraint) -> Self {
+        Self { t, thr_constr }
     }
 
     /// Check whether the constraint is an upper guard
@@ -529,7 +654,10 @@ impl<T> ThresholdConstraintOver<T> {
     /// An upper guard is a guard of the form `< t` or `<= t` or `!= t` or
     /// `== t`, as it can become disabled when the threshold is reached.
     pub fn is_upper_guard(&self) -> bool {
-        matches!(self.thr_constr.get_op(), ThresholdCompOp::Lt)
+        matches!(
+            self.thr_constr.get_op(),
+            ThresholdCompOp::Lt | ThresholdCompOp::Leq
+        )
     }
 
     /// Check whether the constraint is a lower guard
@@ -537,12 +665,15 @@ impl<T> ThresholdConstraintOver<T> {
     /// A lower guard is a guard of the form `> t` or `>= t` or `!= t` or
     /// `== t`, as it can become enabled when the threshold is reached.
     pub fn is_lower_guard(&self) -> bool {
-        matches!(self.thr_constr.get_op(), ThresholdCompOp::Geq)
+        matches!(
+            self.thr_constr.get_op(),
+            ThresholdCompOp::Geq | ThresholdCompOp::Gt
+        )
     }
 
     /// Get the subject of the constraint
-    pub fn get_variable(&self) -> &T {
-        &self.variable
+    pub fn get_t(&self) -> &T {
+        &self.t
     }
 
     /// Get the threshold of the constraint
@@ -564,7 +695,7 @@ impl<T> ThresholdConstraintOver<T> {
         T: IntoNoDivBooleanExpr<S>,
         Threshold: IntoNoDivBooleanExpr<S>,
     {
-        self.variable.encode_comparison_to_boolean_expression(
+        self.t.encode_comparison_to_boolean_expression(
             self.thr_constr.get_op().into(),
             self.thr_constr.get_threshold(),
         )
@@ -587,7 +718,7 @@ where
     T: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.variable, self.thr_constr)
+        write!(f, "{} {}", self.t, self.thr_constr)
     }
 }
 
@@ -607,11 +738,10 @@ pub trait IntoNoDivBooleanExpr<T>
 where
     T: Atomic,
 {
-    /// Encode the object into an `IntegerExpression` without divisions
-    /// appearing
+    /// Get the scaled integer expression
     ///
-    /// **Important:** The scaling factor must be a multiple of the least common
-    /// multiple (LCM) of the expression. That is the relation
+    /// **Important:** The scaling factor supplied will be a multiple of the
+    /// least common multiple (LCM) of the expression. That is the relation
     /// `scaling_factor % self.get_lcm_of_denominators() == 0` must hold.
     ///
     /// This function converts the object into an integer expression without any
@@ -868,6 +998,79 @@ mod tests {
     }
 
     #[test]
+    fn test_threshold_add() {
+        // disjoint parameters are combined
+        let thr = Threshold::new(BTreeMap::from([(Parameter::new("n"), 1)]), 1)
+            + Threshold::new(BTreeMap::from([(Parameter::new("m"), 2)]), 2);
+
+        let expected = Threshold::new(
+            BTreeMap::from([(Parameter::new("n"), 1), (Parameter::new("m"), 2)]),
+            3,
+        );
+        assert_eq!(thr, expected);
+
+        // coefficients of parameters appearing in both summands accumulate
+        let thr = Threshold::new(BTreeMap::from([(Parameter::new("n"), 2)]), 1)
+            + Threshold::new(BTreeMap::from([(Parameter::new("n"), 3)]), 2);
+
+        let expected = Threshold::new(BTreeMap::from([(Parameter::new("n"), 5)]), 3);
+        assert_eq!(thr, expected);
+
+        // coefficients canceling out to 0 are removed
+        let thr = Threshold::new(BTreeMap::from([(Parameter::new("n"), 1)]), 1)
+            + Threshold::new(
+                BTreeMap::from([(Parameter::new("n"), -Fraction::from(1))]),
+                2,
+            );
+
+        let expected = Threshold::from_const(3);
+        assert_eq!(thr, expected);
+        assert!(thr.is_constant());
+
+        // adding pure constants
+        let thr = Threshold::from_const(1) + Threshold::from_const(2);
+        assert_eq!(thr.get_const().unwrap(), Fraction::from(3));
+    }
+
+    #[test]
+    fn test_threshold_sub() {
+        // disjoint parameters: coefficients of the rhs are subtracted
+        let thr = Threshold::new(BTreeMap::from([(Parameter::new("n"), 1)]), 1)
+            - Threshold::new(BTreeMap::from([(Parameter::new("m"), 2)]), 3);
+
+        let expected = Threshold::new(
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(1)),
+                (Parameter::new("m"), -Fraction::from(2)),
+            ]),
+            -Fraction::from(2),
+        );
+        assert_eq!(thr, expected);
+
+        // coefficients of parameters appearing in both are subtracted
+        let thr = Threshold::new(BTreeMap::from([(Parameter::new("n"), 5)]), 3)
+            - Threshold::new(BTreeMap::from([(Parameter::new("n"), 2)]), 1);
+
+        let expected = Threshold::new(BTreeMap::from([(Parameter::new("n"), 3)]), 2);
+        assert_eq!(thr, expected);
+
+        // subtracting a threshold from itself yields 0
+        let thr = Threshold::new(BTreeMap::from([(Parameter::new("n"), 1)]), 1)
+            - Threshold::new(BTreeMap::from([(Parameter::new("n"), 1)]), 1);
+        assert!(thr.is_zero());
+
+        // resulting coefficients may become negative
+        let thr = Threshold::new(BTreeMap::from([(Parameter::new("n"), 1)]), 0)
+            - Threshold::new(BTreeMap::from([(Parameter::new("n"), 2)]), 0);
+
+        let expected = Threshold::new(
+            BTreeMap::from([(Parameter::new("n"), -Fraction::from(1))]),
+            0,
+        );
+        assert_eq!(thr, expected);
+    }
+
+    #[test]
     fn test_threshold_constr_getters() {
         let thrc = ThresholdConstraint::new(
             ThresholdCompOp::Geq,
@@ -887,6 +1090,147 @@ mod tests {
         );
 
         assert_eq!(thrc.get_threshold(), &thr)
+    }
+
+    #[test]
+    fn test_threshold_constr_scale() {
+        let mut thrc = ThresholdConstraint::new(
+            ThresholdCompOp::Gt,
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(1)),
+                (Parameter::new("m"), -Fraction::from(2)),
+            ]),
+            1,
+        );
+        thrc.scale(Fraction::from(1));
+
+        let expected = ThresholdConstraint::new(
+            ThresholdCompOp::Gt,
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(1)),
+                (Parameter::new("m"), -Fraction::from(2)),
+            ]),
+            Fraction::from(1),
+        );
+
+        assert_eq!(thrc, expected);
+
+        thrc.scale(Fraction::from(2));
+
+        let expected = ThresholdConstraint::new(
+            ThresholdCompOp::Gt,
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(2)),
+                (Parameter::new("m"), -Fraction::from(4)),
+            ]),
+            Fraction::from(2),
+        );
+
+        assert_eq!(thrc, expected);
+
+        thrc.scale(Fraction::new(1, 2, false));
+
+        let expected = ThresholdConstraint::new(
+            ThresholdCompOp::Gt,
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(1)),
+                (Parameter::new("m"), -Fraction::from(2)),
+            ]),
+            1,
+        );
+
+        assert_eq!(thrc, expected);
+    }
+
+    #[test]
+    fn test_threshold_constr_scale_with_negative() {
+        let mut thrc = ThresholdConstraint::new(
+            ThresholdCompOp::Gt,
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(1)),
+                (Parameter::new("m"), -Fraction::from(2)),
+            ]),
+            1,
+        );
+
+        thrc.scale(-Fraction::from(2));
+
+        let expected = ThresholdConstraint::new(
+            ThresholdCompOp::Lt,
+            BTreeMap::from([
+                (Parameter::new("n"), -Fraction::from(2)),
+                (Parameter::new("m"), Fraction::from(4)),
+            ]),
+            -Fraction::from(2),
+        );
+
+        assert_eq!(thrc, expected);
+
+        let mut thrc = ThresholdConstraint::new(
+            ThresholdCompOp::Leq,
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(1)),
+                (Parameter::new("m"), -Fraction::from(2)),
+            ]),
+            1,
+        );
+
+        thrc.scale(-Fraction::from(2));
+
+        let expected = ThresholdConstraint::new(
+            ThresholdCompOp::Geq,
+            BTreeMap::from([
+                (Parameter::new("n"), -Fraction::from(2)),
+                (Parameter::new("m"), Fraction::from(4)),
+            ]),
+            -Fraction::from(2),
+        );
+
+        assert_eq!(thrc, expected);
+
+        let mut thrc = ThresholdConstraint::new(
+            ThresholdCompOp::Lt,
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(1)),
+                (Parameter::new("m"), -Fraction::from(2)),
+            ]),
+            1,
+        );
+
+        thrc.scale(-Fraction::from(2));
+
+        let expected = ThresholdConstraint::new(
+            ThresholdCompOp::Gt,
+            BTreeMap::from([
+                (Parameter::new("n"), -Fraction::from(2)),
+                (Parameter::new("m"), Fraction::from(4)),
+            ]),
+            -Fraction::from(2),
+        );
+
+        assert_eq!(thrc, expected);
+
+        let mut thrc = ThresholdConstraint::new(
+            ThresholdCompOp::Leq,
+            BTreeMap::from([
+                (Parameter::new("n"), Fraction::from(1)),
+                (Parameter::new("m"), -Fraction::from(2)),
+            ]),
+            1,
+        );
+
+        thrc.scale(-Fraction::from(2));
+
+        let expected = ThresholdConstraint::new(
+            ThresholdCompOp::Geq,
+            BTreeMap::from([
+                (Parameter::new("n"), -Fraction::from(2)),
+                (Parameter::new("m"), Fraction::from(4)),
+            ]),
+            -Fraction::from(2),
+        );
+
+        assert_eq!(thrc, expected);
     }
 
     #[test]

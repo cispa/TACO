@@ -225,8 +225,8 @@ mod tests {
                 RuleBuilder::new(0, Location::new("l1"), Location::new("l1"))
                     .with_guard(BooleanExpression::ComparisonExpression(
                         Box::new(IntegerExpression::Atom(var.clone())),
-                        ComparisonOp::Gt,
-                        Box::new(IntegerExpression::Const(2)),
+                        ComparisonOp::Geq,
+                        Box::new(IntegerExpression::Const(3)),
                     ))
                     .with_action(
                         Action::new(

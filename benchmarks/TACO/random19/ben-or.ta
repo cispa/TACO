@@ -206,47 +206,27 @@ thresholdAutomaton Proc {
     agreement1: []((locD1 != 0) -> [](locD0 == 0 && locE0 == 0));
 
     round_term:
-        <>[](  (nsntR0 + nsntR1 < N - T || locSR == 0)
-            && ((nsntP0 + nsntP1 + nsntPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-            ->
-            <> (locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0);
+         <> (locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0);
 
     univalent20:
-        <>[](  (nsntR0 + nsntR1 < N - T || locSR == 0)
-            && ((nsntP0 + nsntP1 + nsntPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-        && (locV1 == 0) -> <> (locD0 != 0 || locE0 != 0);
+        <> (locD0 != 0 || locE0 != 0);
 
     decide_or_flip:
-        <>[](  (nsntR0 + nsntR1 < N - T || locSR == 0)
-            && ((nsntP0 + nsntP1 + nsntPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-            ->
-            <> (locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0
+        <> (locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0
                     && locD1 == 0 && locE1 == 0
                 || 
                 locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0
                     && locD0 == 0 && locE0 == 0);
 
     univalent30:
-        <>[](  (nsntR0 + nsntR1 < N - T || locSR == 0)
-            && ((nsntP0 + nsntP1 + nsntPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-        && (locV1 == 0) -> <> (locV0 == 0 && locV1 == 0 && locSR == 0
+        <> (locV0 == 0 && locV1 == 0 && locSR == 0
             && locSP == 0 && locD1 == 0 && locE1 == 0);
 
     univalent21:
-        <>[](  (nsntR0 + nsntR1 < N - T || locSR == 0)
-            && ((nsntP0 + nsntP1 + nsntPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-        && (locV0 == 0) -> <> (locD1 != 0 || locE1 != 0);
+        <> (locD1 != 0 || locE1 != 0);
 
     univalent31:
-        <>[](  (nsntR0 + nsntR1 < N - T || locSR == 0)
-            && ((nsntP0 + nsntP1 + nsntPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-        && (locV0 == 0) -> <> (locV0 == 0 && locV1 == 0 && locSR == 0
+        <> (locV0 == 0 && locV1 == 0 && locSR == 0
             && locSP == 0 && locD0 == 0 && locE0 == 0);
 
   }

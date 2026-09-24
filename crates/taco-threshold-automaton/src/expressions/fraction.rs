@@ -60,6 +60,24 @@ impl Fraction {
         self.negated
     }
 
+    /// Check whether the fraction is equal to 0
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use taco_threshold_automaton::expressions::fraction::Fraction;
+    ///
+    /// // 0/5 is simplified to 0/1 upon creation
+    /// let f = Fraction::new(0, 5, false);
+    /// assert_eq!(f.is_zero(), true);
+    ///
+    /// let f = Fraction::new(1, 2, false);
+    /// assert_eq!(f.is_zero(), false);
+    /// ```
+    pub fn is_zero(&self) -> bool {
+        self.numerator == 0
+    }
+
     /// Check whether the fraction represents an integer
     ///
     /// # Example
@@ -198,6 +216,71 @@ impl Fraction {
     pub fn numerator(&self) -> u32 {
         debug_assert!(self.is_simplified());
         self.numerator
+    }
+
+    /// Get the next closest integer while always rounding up
+    ///
+    /// Returns `None` for negative fractions
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use taco_threshold_automaton::expressions::fraction::Fraction;
+    ///
+    /// // ceil(5/2) = 3
+    /// let f = Fraction::new(5, 2, false);
+    /// assert_eq!(f.get_ceil(), Some(3));
+    ///
+    /// // ceil(6/2) = 3
+    /// let f = Fraction::new(6, 2, false);
+    /// assert_eq!(f.get_ceil(), Some(3));
+    ///
+    /// // negative fractions cannot be rounded to a non-negative integer
+    /// let f = Fraction::new(5, 2, true);
+    /// assert_eq!(f.get_ceil(), None);
+    /// ```
+    pub fn get_ceil(&self) -> Option<u32> {
+        debug_assert!(self.is_simplified());
+        if self.is_negative() {
+            return None;
+        }
+
+        let mut c = self.numerator / self.denominator;
+        if !self.numerator.is_multiple_of(self.denominator) {
+            c += 1;
+        }
+
+        Some(c)
+    }
+
+    /// Get the next closest integer while always rounding down
+    ///
+    /// Returns `None` for negative fractions
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use taco_threshold_automaton::expressions::fraction::Fraction;
+    ///
+    /// // floor(5/2) = 2
+    /// let f = Fraction::new(5, 2, false);
+    /// assert_eq!(f.get_floor(), Some(2));
+    ///
+    /// // floor(6/2) = 3
+    /// let f = Fraction::new(6, 2, false);
+    /// assert_eq!(f.get_floor(), Some(3));
+    ///
+    /// // negative fractions cannot be rounded to a non-negative integer
+    /// let f = Fraction::new(5, 2, true);
+    /// assert_eq!(f.get_floor(), None);
+    /// ```
+    pub fn get_floor(&self) -> Option<u32> {
+        debug_assert!(self.is_simplified());
+        if self.is_negative() {
+            return None;
+        }
+
+        Some(self.numerator / self.denominator)
     }
 }
 
@@ -404,6 +487,99 @@ mod tests {
         let f = Fraction::new(12, 9, true);
         assert_eq!(f.numerator(), 4);
         assert_eq!(f.denominator(), 3);
+    }
+
+    #[test]
+    fn test_fraction_get_ceil() {
+        // exact integers are returned unchanged
+        let f = Fraction::new(6, 2, false);
+        assert_eq!(f.get_ceil(), Some(3));
+
+        let f = Fraction::new(4, 2, true);
+        assert_eq!(f.get_ceil(), None);
+
+        // fractional parts are rounded up
+        let f = Fraction::new(5, 2, false);
+        assert_eq!(f.get_ceil(), Some(3));
+
+        let f = Fraction::new(1, 3, false);
+        assert_eq!(f.get_ceil(), Some(1));
+
+        let f = Fraction::new(7, 3, false);
+        assert_eq!(f.get_ceil(), Some(3));
+
+        let f = Fraction::new(2, 3, false);
+        assert_eq!(f.get_ceil(), Some(1));
+
+        // zero
+        let f = Fraction::new(0, 1, false);
+        assert_eq!(f.get_ceil(), Some(0));
+
+        // negative fractions
+        let f = Fraction::new(1, 2, true);
+        assert_eq!(f.get_ceil(), None);
+    }
+
+    #[test]
+    fn test_fraction_get_floor() {
+        // exact integers are returned unchanged
+        let f = Fraction::new(6, 2, false);
+        assert_eq!(f.get_floor(), Some(3));
+
+        let f = Fraction::new(4, 2, true);
+        assert_eq!(f.get_floor(), None);
+
+        // fractional parts are rounded down
+        let f = Fraction::new(5, 2, false);
+        assert_eq!(f.get_floor(), Some(2));
+
+        let f = Fraction::new(1, 3, false);
+        assert_eq!(f.get_floor(), Some(0));
+
+        let f = Fraction::new(7, 3, false);
+        assert_eq!(f.get_floor(), Some(2));
+
+        // zero
+        let f = Fraction::new(0, 1, false);
+        assert_eq!(f.get_floor(), Some(0));
+
+        // negative fractions
+        let f = Fraction::new(1, 2, true);
+        assert_eq!(f.get_floor(), None);
+
+        // floor and ceil coincide for integers
+        let f = Fraction::new(9, 3, false);
+        assert_eq!(f.get_floor(), f.get_ceil());
+    }
+
+    #[test]
+    fn test_fraction_is_zero() {
+        // zero values
+        let f = Fraction::new(0, 1, false);
+        assert!(f.is_zero());
+
+        let f = Fraction::new(0, 1, true);
+        assert!(f.is_zero());
+
+        let f = Fraction::new(0, 5, false);
+        assert!(f.is_zero());
+
+        // non-zero values
+        let f = Fraction::new(1, 2, false);
+        assert!(!f.is_zero());
+
+        let f = Fraction::new(42, 7, false);
+        assert!(!f.is_zero());
+
+        let f = Fraction::new(1, 2, true);
+        assert!(!f.is_zero());
+
+        // canonicalize maps zero to 0/1 with negated = false
+        let f = Fraction::new(0, 5, true);
+        assert!(f.is_zero());
+        assert_eq!(f.numerator(), 0);
+        assert_eq!(f.denominator(), 1);
+        assert!(!f.is_negative());
     }
 
     #[test]

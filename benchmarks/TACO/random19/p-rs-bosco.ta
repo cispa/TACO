@@ -399,28 +399,12 @@ thresholdAutomaton Proc {
 
     /* termination in the current round */
     round_term:
-        (<>[]((((sv0 + sv1 < N - T)
-                || (locSV0 == 0 && locSV1 == 0))
-            && ((sc0 + sc1 < N - T) 
-                || (locSC20 == 0 && locSC21 == 0
-                        && locSC10 == 0 && locSC11 == 0
-                        && locSC00 == 0 && locSC01 == 0)))
-            && locI0 == 0 && locI1 == 0))
-        ->
         <>(locI0 == 0 && locI1 == 0 && locSV0 == 0 && locSV1 == 0
             && locSC20 == 0 && locSC21 == 0 && locSC10 == 0
             && locSC11 == 0 && locSC00 == 0 && locSC01 == 0);
 
     decide_or_flip:
-        (<>[]((((sv0 + sv1 < N - T)
-                || (locSV0 == 0 && locSV1 == 0))
-            && ((sc0 + sc1 < N - T) 
-                || (locSC20 == 0 && locSC21 == 0
-                        && locSC10 == 0 && locSC11 == 0
-                        && locSC00 == 0 && locSC01 == 0)))
-            && locI0 == 0 && locI1 == 0))
-            ->
-            <> (locI0 == 0 && locI1 == 0 && locSV0 == 0 && locSV1 == 0
+        <> (locI0 == 0 && locI1 == 0 && locSV0 == 0 && locSV1 == 0
                 && locSC10 == 0 && locSC11 == 0 && locSC20 == 0 && locSC21 == 0
                 || 
                 locI0 == 0 && locI1 == 0 && locSV0 == 0 && locSV1 == 0

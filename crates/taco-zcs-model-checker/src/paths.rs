@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use taco_interval_ta::IntervalThresholdAutomaton;
 use taco_interval_ta::interval::Interval;
+use taco_model_checker::internal_spec::ErrorTarget;
 use taco_threshold_automaton::RuleDefinition;
 use taco_threshold_automaton::expressions::Variable;
 use taco_threshold_automaton::general_threshold_automaton::Rule;
@@ -76,8 +77,13 @@ impl<'a> SteadyErrorPath<'a> {
             smc_ctx.ta(),
             self,
         );
+
+        let ErrorTarget::Reach(spec) = smc_ctx.spec() else {
+            todo!("Remove once implemented");
+        };
+
         if reached_error_state {
-            smt_encoder.steady_is_non_spurious(Some(smc_ctx.spec()))
+            smt_encoder.steady_is_non_spurious(Some(spec))
         } else {
             smt_encoder.steady_is_non_spurious(None)
         }

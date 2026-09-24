@@ -113,10 +113,9 @@ impl Configuration {
             .and_modify(|e| *e += tr.number_applied);
 
         if let Some(e) = new_loc_assignment.get_mut(tr.rule_used.source()) {
-            if let Some(sub) = e.checked_sub(tr.number_applied) {
+            {
+                let sub = e.checked_sub(tr.number_applied)?;
                 *e = sub;
-            } else {
-                return None;
             }
         }
 

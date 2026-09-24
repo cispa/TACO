@@ -47,7 +47,7 @@ use taco_threshold_automaton::{
     general_threshold_automaton::{GeneralThresholdAutomaton, Rule},
 };
 
-use crate::{ModelCheckerContext, TargetSpec};
+use crate::{ModelCheckerContext, TASpecification};
 
 /// Trait for preprocessing threshold automata
 ///
@@ -55,7 +55,7 @@ use crate::{ModelCheckerContext, TargetSpec};
 /// to simplify it for further analysis.
 pub trait Preprocessor<
     T: ModifiableThresholdAutomaton + ThresholdAutomaton,
-    S: TargetSpec,
+    S: TASpecification,
     C: ModelCheckerContext,
 >
 {
@@ -87,8 +87,8 @@ impl DropSelfLoops {
     }
 }
 
-impl<T: ModifiableThresholdAutomaton, S: TargetSpec, C: ModelCheckerContext> Preprocessor<T, S, C>
-    for DropSelfLoops
+impl<T: ModifiableThresholdAutomaton, S: TASpecification, C: ModelCheckerContext>
+    Preprocessor<T, S, C> for DropSelfLoops
 {
     fn process(&self, ta: &mut T, _spec: &S, _ctx: &C) {
         let n_rules = ta.rules().count();
@@ -163,7 +163,7 @@ impl DropUnreachableLocations {
     }
 }
 
-impl<S: TargetSpec, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomaton, S, C>
+impl<S: TASpecification, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomaton, S, C>
     for DropUnreachableLocations
 {
     /// Preprocessor that drops unreachable locations from the threshold automaton
@@ -175,7 +175,7 @@ impl<S: TargetSpec, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomat
     /// locations. If a location is not reachable, it is removed from the threshold
     /// automaton.
     fn process(&self, ta: &mut GeneralThresholdAutomaton, spec: &S, _ctx: &C) {
-        let locations_to_keep = spec.get_locations_in_target().into_iter().collect();
+        let locations_to_keep = spec.locs_appearing().into_iter().collect();
 
         let unreachable_locations = self.compute_unreachable_locations(ta, locations_to_keep);
         if unreachable_locations.is_empty() {
@@ -283,7 +283,7 @@ impl ReplaceTrivialGuardsStatic {
     }
 }
 
-impl<S: TargetSpec, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomaton, S, C>
+impl<S: TASpecification, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomaton, S, C>
     for ReplaceTrivialGuardsStatic
 {
     /// A lot of automatically generated benchmarks have guards of the form
@@ -408,7 +408,7 @@ impl ReplaceTrivialGuardsSMT {
     }
 }
 
-impl<S: TargetSpec, C: ModelCheckerContext + ProvidesSMTSolverBuilder>
+impl<S: TASpecification, C: ModelCheckerContext + ProvidesSMTSolverBuilder>
     Preprocessor<GeneralThresholdAutomaton, S, C> for ReplaceTrivialGuardsSMT
 {
     fn process(&self, ta: &mut GeneralThresholdAutomaton, _spec: &S, ctx: &C) {
@@ -487,7 +487,7 @@ impl RemoveUnusedVariables {
         r.retain_actions(|a| !vars.contains(a.variable()));
     }
 }
-impl<S: TargetSpec, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomaton, S, C>
+impl<S: TASpecification, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomaton, S, C>
     for RemoveUnusedVariables
 {
     fn process(&self, ta: &mut GeneralThresholdAutomaton, _spec: &S, _ctx: &C) {
@@ -531,7 +531,7 @@ impl CheckInitCondSatSMT {
     }
 }
 
-impl<S: TargetSpec, C: ModelCheckerContext + ProvidesSMTSolverBuilder>
+impl<S: TASpecification, C: ModelCheckerContext + ProvidesSMTSolverBuilder>
     Preprocessor<GeneralThresholdAutomaton, S, C> for CheckInitCondSatSMT
 {
     fn process(&self, ta: &mut GeneralThresholdAutomaton, _spec: &S, ctx: &C) {
@@ -643,7 +643,7 @@ impl DropUnsatisfiableRules {
 
 impl<
     T: ModifiableThresholdAutomaton,
-    S: TargetSpec,
+    S: TASpecification,
     C: ModelCheckerContext + ProvidesSMTSolverBuilder,
 > Preprocessor<T, S, C> for DropUnsatisfiableRules
 {
@@ -740,12 +740,11 @@ impl CollapseLocations {
     }
 }
 
-impl<S: TargetSpec, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomaton, S, C>
+impl<S: TASpecification, C: ModelCheckerContext> Preprocessor<GeneralThresholdAutomaton, S, C>
     for CollapseLocations
 {
     fn process(&self, ta: &mut GeneralThresholdAutomaton, spec: &S, _ctx: &C) {
-        let locations_to_keep: HashSet<&Location> =
-            spec.get_locations_in_target().into_iter().collect();
+        let locations_to_keep: HashSet<&Location> = spec.locs_appearing().into_iter().collect();
 
         let n_locations = ta.locations().count();
         let n_rules = ta.rules().count();
@@ -815,7 +814,7 @@ pub enum ExistingPreprocessors {
 
 impl<S, C> From<ExistingPreprocessors> for Box<dyn Preprocessor<GeneralThresholdAutomaton, S, C>>
 where
-    S: TargetSpec,
+    S: TASpecification,
     C: ModelCheckerContext + ProvidesSMTSolverBuilder,
 {
     fn from(val: ExistingPreprocessors) -> Self {
@@ -877,10 +876,7 @@ mod test {
         },
     };
 
-    use crate::{
-        DummyError,
-        reachability_specification::{DisjunctionTargetConfig, TargetConfig},
-    };
+    use crate::internal_spec::upwards_closed_set::UpwardsClosedSet;
 
     use super::*;
 
@@ -892,12 +888,12 @@ mod test {
         }
     }
 
-    impl TargetSpec for DummySpec {
-        fn get_locations_in_target(&self) -> impl IntoIterator<Item = &Location> {
+    impl TASpecification for DummySpec {
+        fn locs_appearing(&self) -> impl IntoIterator<Item = &Location> {
             self.0.iter()
         }
 
-        fn get_variable_constraint(
+        fn var_constraint(
             &self,
         ) -> impl IntoIterator<
             Item = &taco_threshold_automaton::lia_threshold_automaton::LIAVariableConstraint,
@@ -918,7 +914,7 @@ mod test {
     pub struct DummyContext;
 
     impl ModelCheckerContext for DummyContext {
-        type CreationError = DummyError;
+        type CreationError = std::convert::Infallible;
 
         type ContextOptions = ();
 
@@ -1727,10 +1723,7 @@ mod test {
             .unwrap()
             .build();
 
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".into(),
-            [TargetConfig::new_cover([loc2.clone()]).unwrap()],
-        );
+        let spec = UpwardsClosedSet::new_cover([loc2.clone()]);
 
         CollapseLocations {}.process(&mut ta, &spec, &DummyContext {});
 

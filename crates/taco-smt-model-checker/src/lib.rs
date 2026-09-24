@@ -15,12 +15,12 @@
 use core::fmt;
 use std::error;
 
-use log::info;
+use log::{info, warn};
 use smt_encoding::{ContextMgrError, EContextMgr};
-use taco_model_checker::{
-    ModelChecker, ModelCheckerResult, TargetSpec,
-    reachability_specification::{DisjunctionTargetConfig, ReachabilityProperty},
+use taco_model_checker::internal_spec::{
+    ErrorSpec, ErrorTarget, upwards_closed_set::UpwardsClosedSet,
 };
+use taco_model_checker::{ModelChecker, ModelCheckerResult, TASpecOf, TASpecification};
 use taco_smt_encoder::SMTSolverBuilder;
 use taco_threshold_automaton::{
     ThresholdAutomaton, general_threshold_automaton::GeneralThresholdAutomaton,
@@ -86,7 +86,9 @@ impl error::Error for SMTModelCheckerInitializationError {}
 pub struct SMTModelChecker {
     _opts: SMTModelCheckerOptions,
     solver_builder: SMTSolverBuilder,
-    ta_spec: Vec<(DisjunctionTargetConfig, Vec<GeneralThresholdAutomaton>)>,
+    ta_spec: TASpecOf<Self>,
+    /// Properties that could not be translated
+    unknown: Vec<String>,
 }
 
 impl ModelChecker for SMTModelChecker {
@@ -94,7 +96,7 @@ impl ModelChecker for SMTModelChecker {
 
     type ModelCheckerOptions = SMTModelCheckerOptions;
 
-    type SpecType = ReachabilityProperty;
+    type SpecType = ErrorSpec;
 
     type ThresholdAutomatonType = GeneralThresholdAutomaton;
 
@@ -104,12 +106,13 @@ impl ModelChecker for SMTModelChecker {
 
     fn initialize(
         opts: Self::ModelCheckerOptions,
-        ta_spec: Vec<(DisjunctionTargetConfig, Vec<Self::ThresholdAutomatonType>)>,
+        ta_spec: TASpecOf<Self>,
+        unknown: Vec<String>,
         ctx: Self::ModelCheckerContext,
     ) -> Result<Self, Self::InitializationError> {
         if ta_spec
             .iter()
-            .any(|(_, tas)| tas.iter().any(|ta| ta.has_decrements_or_resets()))
+            .any(|(_, _, tas)| tas.iter().any(|ta| ta.has_decrements_or_resets()))
         {
             return Err(SMTModelCheckerInitializationError::ResetsOrDecrements);
         }
@@ -118,6 +121,7 @@ impl ModelChecker for SMTModelChecker {
             _opts: opts,
             solver_builder: ctx,
             ta_spec,
+            unknown,
         })
     }
 
@@ -141,29 +145,36 @@ impl SMTModelChecker {
         abort_on_violation: bool,
     ) -> Result<ModelCheckerResult, ContextMgrError> {
         let mut unsafe_prop = Vec::new();
+        let mut unknown_prop = self.unknown;
 
-        for (target, tas_to_check) in self.ta_spec.into_iter() {
+        for (name, target, tas_to_check) in self.ta_spec.into_iter() {
+            let ErrorTarget::Reach(target) = target else {
+                warn!("Property '{name}' ({target}) is not supported by the SMT model checker");
+                unknown_prop.push(name);
+                continue;
+            };
+
             info!(
                 "Starting to check property '{}', which requires {} model checker run(s).",
-                target.name(),
+                name,
                 tas_to_check.len()
             );
             let mut found_counter_ex = false;
             for ta in tas_to_check.into_iter() {
-                let target_var_constr = target
-                    .get_variable_constraint()
-                    .into_iter()
-                    .collect::<Vec<_>>();
+                let target_var_constr = target.var_constraint().into_iter().collect::<Vec<_>>();
 
                 let ctx_mgr = EContextMgr::new(ta, &target_var_constr, &self.solver_builder)?;
                 let res = ctx_mgr.check_spec(&target);
                 if let Some(p) = res {
-                    info!("Property {} is not satisfied!", target.name());
+                    info!("Property {} is not satisfied!", name);
 
-                    unsafe_prop.push((target.name().to_string(), Box::new(p)));
+                    unsafe_prop.push((name.clone(), Box::new(p)));
 
                     if abort_on_violation {
-                        return Ok(ModelCheckerResult::UNSAFE(unsafe_prop));
+                        return Ok(ModelCheckerResult::UNSAFE {
+                            violations: unsafe_prop,
+                            unknown: unknown_prop,
+                        });
                     }
 
                     found_counter_ex = true;
@@ -174,13 +185,19 @@ impl SMTModelChecker {
             if !found_counter_ex {
                 info!(
                     "Finished verifying property '{}'. The property holds!",
-                    target.name()
+                    name
                 );
             }
         }
 
         if !unsafe_prop.is_empty() {
-            return Ok(ModelCheckerResult::UNSAFE(unsafe_prop));
+            return Ok(ModelCheckerResult::UNSAFE {
+                violations: unsafe_prop,
+                unknown: unknown_prop,
+            });
+        }
+        if !unknown_prop.is_empty() {
+            return Ok(ModelCheckerResult::UNKNOWN(unknown_prop));
         }
 
         Ok(ModelCheckerResult::SAFE)
@@ -206,25 +223,34 @@ impl SMTModelChecker {
             .build()
             .unwrap();
 
-        let mut completed_map = HashMap::new();
+        let mut completed_map: HashMap<String, (usize, Arc<AtomicUsize>)> = HashMap::new();
+        let mut unknown_prop = self.unknown;
 
         let futures = FuturesUnordered::new();
-        for (target, tas_to_check) in self.ta_spec.into_iter() {
+        for (name, target, tas_to_check) in self.ta_spec.into_iter() {
+            let ErrorTarget::Reach(target) = target else {
+                warn!("Property '{name}' ({target}) is not supported by the SMT model checker");
+                unknown_prop.push(name);
+                continue;
+            };
+
             info!(
                 "Queuing checks for property '{}', which requires {} model checker run(s).",
-                target.name(),
+                name,
                 tas_to_check.len()
             );
 
-            let completed_safe_counter = Arc::new(AtomicUsize::new(0));
-            completed_map.insert(
-                target.name().to_string(),
-                (tas_to_check.len(), completed_safe_counter.clone()),
-            );
+            // Multiple targets can belong to the same property
+            let (expected, completed_safe_counter) = completed_map
+                .entry(name.clone())
+                .or_insert_with(|| (0, Arc::new(AtomicUsize::new(0))));
+            *expected += tas_to_check.len();
+            let completed_safe_counter = completed_safe_counter.clone();
 
             for ta in tas_to_check.into_iter() {
                 let ft = runtime.spawn(Self::check_single_target(
                     ta,
+                    name.clone(),
                     target.clone(),
                     self.solver_builder.clone(),
                     completed_safe_counter.clone(),
@@ -237,6 +263,7 @@ impl SMTModelChecker {
             futures,
             abort_on_violation,
             completed_map,
+            unknown_prop,
         ));
         runtime
             .block_on(res)
@@ -252,18 +279,22 @@ impl SMTModelChecker {
         mut futures: FuturesUnordered<JoinHandle<Result<ModelCheckerResult, ContextMgrError>>>,
         abort_on_violation: bool,
         completed_map: HashMap<String, (usize, Arc<AtomicUsize>)>,
+        unknown_prop: Vec<String>,
     ) -> Result<ModelCheckerResult, ContextMgrError> {
         let mut found_violations: Vec<(String, Box<Path>)> = Vec::new();
 
         while let Some(result) = futures.next().await {
             let res = result.expect("Task panicked or runtime error")?;
 
-            if let ModelCheckerResult::UNSAFE(mut violations) = res {
+            if let ModelCheckerResult::UNSAFE { mut violations, .. } = res {
                 if abort_on_violation {
                     futures.into_iter().for_each(|f| {
                         f.abort();
                     });
-                    return Ok(ModelCheckerResult::UNSAFE(violations));
+                    return Ok(ModelCheckerResult::UNSAFE {
+                        violations,
+                        unknown: unknown_prop,
+                    });
                 }
                 found_violations.append(&mut violations);
             }
@@ -276,7 +307,13 @@ impl SMTModelChecker {
         }
 
         if !found_violations.is_empty() {
-            return Ok(ModelCheckerResult::UNSAFE(found_violations));
+            return Ok(ModelCheckerResult::UNSAFE {
+                violations: found_violations,
+                unknown: unknown_prop,
+            });
+        }
+        if !unknown_prop.is_empty() {
+            return Ok(ModelCheckerResult::UNKNOWN(unknown_prop));
         }
 
         Ok(ModelCheckerResult::SAFE)
@@ -286,25 +323,23 @@ impl SMTModelChecker {
     /// Check reachability of a single [`DisjunctionTargetConfig`]
     async fn check_single_target(
         ta: GeneralThresholdAutomaton,
-        target: DisjunctionTargetConfig,
+        name: String,
+        target: UpwardsClosedSet,
         solver_builder: SMTSolverBuilder,
         safe_counter: Arc<AtomicUsize>,
     ) -> Result<ModelCheckerResult, ContextMgrError> {
-        let target_var_constr = target
-            .get_variable_constraint()
-            .into_iter()
-            .collect::<Vec<_>>();
+        let target_var_constr = target.var_constraint().into_iter().collect::<Vec<_>>();
 
         let ctx_mgr = EContextMgr::new(ta, &target_var_constr, &solver_builder)?;
         let res = ctx_mgr.check_spec(&target);
 
         if let Some(p) = res {
-            info!("Property {} is not satisfied!", target.name());
+            info!("Property {} is not satisfied!", target);
 
-            return Ok(ModelCheckerResult::UNSAFE(vec![(
-                target.name().to_string(),
-                Box::new(p),
-            )]));
+            return Ok(ModelCheckerResult::UNSAFE {
+                violations: vec![(name, Box::new(p))],
+                unknown: Vec::new(),
+            });
         }
 
         safe_counter.fetch_add(1, Ordering::SeqCst);
@@ -324,6 +359,7 @@ impl SMTModelChecker {
             _opts: SMTModelCheckerOptions::default(),
             solver_builder: SMTSolverBuilder::default(),
             ta_spec: Vec::new(),
+            unknown: Vec::new(),
         }
     }
 
@@ -332,6 +368,7 @@ impl SMTModelChecker {
             _opts: opts,
             solver_builder: SMTSolverBuilder::default(),
             ta_spec: Vec::new(),
+            unknown: Vec::new(),
         }
     }
 }
@@ -340,11 +377,12 @@ impl SMTModelChecker {
 mod tests {
 
     use super::*;
-    use taco_model_checker::{ModelChecker, reachability_specification::TargetConfig};
+    use std::collections::HashMap;
+    use taco_model_checker::ModelChecker;
+    use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
     use taco_parser::{ParseTA, ParseTAWithLTL, bymc::ByMCParser};
     use taco_smt_encoder::SMTSolverBuilderCfg;
     use taco_threshold_automaton::{
-        ModifiableThresholdAutomaton,
         expressions::{
             BooleanExpression, ComparisonOp, IntegerExpression, Location, Parameter, Variable,
         },
@@ -388,14 +426,12 @@ mod tests {
             ";
 
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".into(),
-            [TargetConfig::new_cover([Location::new("loc1")]).unwrap()],
-        );
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc1")]);
 
         let mc = SMTModelChecker::initialize(
             SMTModelCheckerOptions::default(),
-            vec![(spec, vec![ta])],
+            vec![("test".to_string(), ErrorTarget::Reach(spec), vec![ta])],
+            Vec::new(),
             SMTSolverBuilder::default(),
         );
         assert!(mc.is_ok());
@@ -437,14 +473,12 @@ mod tests {
             ";
 
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".into(),
-            [TargetConfig::new_cover([Location::new("loc1")]).unwrap()],
-        );
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc1")]);
 
         let mc = SMTModelChecker::initialize(
             SMTModelCheckerOptions::default(),
-            vec![(spec, vec![ta])],
+            vec![("test".to_string(), ErrorTarget::Reach(spec), vec![ta])],
+            Vec::new(),
             SMTSolverBuilder::default(),
         );
 
@@ -492,20 +526,18 @@ mod tests {
             ";
 
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".into(),
-            [TargetConfig::new_cover([Location::new("loc1")]).unwrap()],
-        );
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc1")]);
 
         let mc = SMTModelChecker::initialize(
             SMTModelCheckerOptions::default(),
-            vec![(spec, vec![ta])],
+            vec![("test".to_string(), ErrorTarget::Reach(spec), vec![ta])],
+            Vec::new(),
             SMTSolverBuilder::default(),
         )
         .unwrap();
         let res = mc.verify(true);
         assert!(res.is_ok());
-        assert!(matches!(res.unwrap(), ModelCheckerResult::UNSAFE(_)));
+        assert!(matches!(res.unwrap(), ModelCheckerResult::UNSAFE { .. }));
     }
 
     #[cfg(feature = "parallel")]
@@ -550,20 +582,18 @@ mod tests {
             ";
 
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".into(),
-            [TargetConfig::new_cover([Location::new("loc1")]).unwrap()],
-        );
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc1")]);
 
         let mc = SMTModelChecker::initialize(
             SMTModelCheckerOptions::new_parallel(),
-            vec![(spec, vec![ta])],
+            vec![("test".to_string(), ErrorTarget::Reach(spec), vec![ta])],
+            Vec::new(),
             SMTSolverBuilder::default(),
         )
         .unwrap();
         let res = mc.verify(true);
         assert!(res.is_ok());
-        assert!(matches!(res.unwrap(), ModelCheckerResult::UNSAFE(_)));
+        assert!(matches!(res.unwrap(), ModelCheckerResult::UNSAFE { .. }));
     }
 
     #[test]
@@ -607,14 +637,12 @@ mod tests {
             ";
 
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".into(),
-            [TargetConfig::new_cover([Location::new("loc3")]).unwrap()],
-        );
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc3")]);
 
         let mc = SMTModelChecker::initialize(
             SMTModelCheckerOptions::default(),
-            vec![(spec, vec![ta])],
+            vec![("test".to_string(), ErrorTarget::Reach(spec), vec![ta])],
+            Vec::new(),
             SMTSolverBuilder::default(),
         )
         .unwrap();
@@ -665,14 +693,12 @@ mod tests {
             ";
 
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".into(),
-            [TargetConfig::new_cover([Location::new("loc3")]).unwrap()],
-        );
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc3")]);
 
         let mc = SMTModelChecker::initialize(
             SMTModelCheckerOptions::new_parallel(),
-            vec![(spec, vec![ta])],
+            vec![("test".to_string(), ErrorTarget::Reach(spec), vec![ta])],
+            Vec::new(),
             SMTSolverBuilder::default(),
         )
         .unwrap();
@@ -802,6 +828,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "parallel")]
     fn test_full_model_checker_reach_location_three_rules_one_guard_self_loop_with_var_constr() {
         let test_spec = "
             skel test_ta1 {
@@ -862,8 +889,7 @@ mod tests {
         let res = mc.verify(true).unwrap();
 
         // Replicate spec ta that is created for ta builder
-        let mut spec_ta = ta.clone();
-        spec_ta.set_name("test_ta1-test1".into());
+        let spec_ta = ta.clone();
 
         // Replicate interval ta for path builder
 
@@ -966,7 +992,7 @@ mod tests {
 
         let res = match res {
             ModelCheckerResult::SAFE => unreachable!("checked above"),
-            ModelCheckerResult::UNSAFE(v) => {
+            ModelCheckerResult::UNSAFE { violations: v, .. } => {
                 assert_eq!(v.len(), 1);
                 *v[0].1.clone()
             }
@@ -980,5 +1006,114 @@ mod tests {
             res,
             path
         );
+    }
+
+    /// Automaton for the tests on how results are reported for each property
+    ///
+    /// Initially one process is in `loc1`, which can move to `loc2`
+    fn reporting_test_spec(specs: &str) -> String {
+        format!(
+            "
+            skel test_ta1 {{
+                shared var1;
+                parameters n, f;
+
+                assumptions (1) {{
+                    n > 3 * f;
+                    n == 1;
+                }}
+
+                locations (2) {{
+                    loc1 : [0];
+                    loc2 : [1];
+                    loc3 : [2];
+                }}
+
+                inits (1) {{
+                    loc1 == n - f;
+                    loc2 == 0;
+                    loc3 == 0;
+                    var1 == 0;
+                }}
+
+                rules (4) {{
+                    0: loc1 -> loc2
+                        when(true)
+                        do {{}};
+                }}
+
+                specifications (1) {{
+                    {specs}
+                }}
+            }}
+            "
+        )
+    }
+
+    fn run_reporting_test(specs: &str) -> ModelCheckerResult {
+        let (ta, spec) = ByMCParser::new()
+            .parse_ta_and_spec(&reporting_test_spec(specs))
+            .unwrap();
+
+        SMTModelChecker::new(
+            Some(SMTSolverBuilderCfg::new_z3()),
+            SMTModelCheckerOptions::default(),
+            Vec::new(),
+            ta,
+            spec.expressions().iter().cloned(),
+        )
+        .expect("Failed to create SMT model checker")
+        .verify(false)
+        .expect("Failed to model check")
+    }
+
+    #[test]
+    fn test_violations_reported_by_property_name() {
+        let res = run_reporting_test(
+            "
+            holds: [](loc3 == 0);
+            reach_violated: [](loc2 == 0);
+            init_violated: loc1 == 0;
+            untranslatable: [](<>(loc1 == 0 || [](loc2 == 0)));
+            ",
+        );
+
+        let ModelCheckerResult::UNSAFE {
+            violations,
+            unknown,
+        } = res
+        else {
+            panic!("Expected UNSAFE, got {res:?}");
+        };
+        assert_eq!(unknown, vec!["untranslatable"]);
+        let mut names = violations
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .collect::<Vec<_>>();
+        names.sort();
+        assert_eq!(names, vec!["init_violated", "reach_violated"]);
+    }
+
+    #[test]
+    fn test_unsupported_properties_reported_unknown() {
+        let res = run_reporting_test(
+            "
+            holds: [](loc3 == 0);
+            liveness: <>(loc2 != 0);
+            untranslatable: [](<>(loc1 == 0 || [](loc2 == 0)));
+            ",
+        );
+
+        let ModelCheckerResult::UNKNOWN(mut unknown) = res else {
+            panic!("Expected UNKNOWN, got {res:?}");
+        };
+        unknown.sort();
+        assert_eq!(unknown, vec!["liveness", "untranslatable"]);
+    }
+
+    #[test]
+    fn test_init_only_property_holds() {
+        let res = run_reporting_test("init_holds: loc2 == 0;");
+        assert_eq!(res, ModelCheckerResult::SAFE);
     }
 }

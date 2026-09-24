@@ -67,9 +67,9 @@ skel Proc {
       do { nsnt' == (nsnt + 1); nsntF' == nsntF; };
   }
   specifications (4) {
-    corr: ((<>([](nsnt < 1  ||  (loc0_3 == 0  &&  (loc0_2 == 0  &&  (loc0_1 == 0  &&  loc0_0 == 0)))))) -> ((loc0_3 != 0  ||  (loc0_2 != 0  ||  (loc1_3 != 0  ||  (loc1_2 != 0  ||  loc0_0 != 0))))  ||  (<>(loc0_2 != 0  ||  loc1_2 != 0))));
-    fisman_kupferman_lustig: ((<>([](nsnt < 1  ||  (loc0_3 == 0  &&  (loc0_2 == 0  &&  (loc0_1 == 0  &&  loc0_0 == 0)))))) -> (<>([]((loc0_2 == 0  &&  loc1_2 == 0)  ||  (loc0_1 == 0  &&  loc0_0 == 0)))));
-    relay: ((<>([](nsnt < 1  ||  (loc0_3 == 0  &&  (loc0_2 == 0  &&  (loc0_1 == 0  &&  loc0_0 == 0)))))) -> ((loc0_2 == 0  &&  loc1_2 == 0)  ||  (<>(loc0_1 == 0  &&  loc0_0 == 0))));
+    corr: (((loc0_3 != 0  ||  (loc0_2 != 0  ||  (loc1_3 != 0  ||  (loc1_2 != 0  ||  loc0_0 != 0))))  ||  (<>(loc0_2 != 0  ||  loc1_2 != 0))));
+    fisman_kupferman_lustig: ((<>([]((loc0_2 == 0  &&  loc1_2 == 0)  ||  (loc0_1 == 0  &&  loc0_0 == 0)))));
+    relay: (((loc0_2 == 0  &&  loc1_2 == 0)  ||  (<>(loc0_1 == 0  &&  loc0_0 == 0))));
     unforg: (( ! (loc0_3 == 0  &&  (loc0_2 == 0  &&  (loc0_1 == 0  &&  (loc1_3 == 0  &&  loc1_2 == 0)))))  ||  ([](loc0_2 == 0  &&  loc1_2 == 0)));
   }
 } /* Proc */

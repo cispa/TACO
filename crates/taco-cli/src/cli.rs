@@ -28,7 +28,7 @@ use taco_model_checker::{
     eltl::{ELTLExpression, ELTLSpecification},
     preprocessing::{self},
 };
-use taco_model_checker::{ModelCheckerContext, ModelCheckerResult, TargetSpec};
+use taco_model_checker::{ModelCheckerContext, ModelCheckerResult, TASpecification};
 use taco_parser::{ParseTAWithLTL, bymc::ByMCParser, tla::TLAParser};
 use taco_smt_encoder::{ProvidesSMTSolverBuilder, SMTSolverBuilderCfg};
 
@@ -364,7 +364,7 @@ fn get_preprocessors<S, C>(
     cfg: &TACOConfig,
 ) -> Vec<Box<dyn preprocessing::Preprocessor<GeneralThresholdAutomaton, S, C>>>
 where
-    S: TargetSpec,
+    S: TASpecification,
     C: ModelCheckerContext + ProvidesSMTSolverBuilder,
 {
     if cfg.get_preprocessors_cfg().is_some() {
@@ -625,7 +625,10 @@ pub fn display_result(
                     "The provided configuration is not reachable from the initial configuration. Coverability/Reachability property not satisfied."
                 )
             }
-            taco_model_checker::ModelCheckerResult::UNSAFE(violations) => {
+            taco_model_checker::ModelCheckerResult::UNSAFE {
+                violations,
+                unknown,
+            } => {
                 for (property, error_path) in violations {
                     if compact_out {
                         info!(
@@ -637,6 +640,11 @@ pub fn display_result(
                             "Path towards the desired configuration of our property: '{property}': {error_path}\n"
                         )
                     }
+                }
+                for property in unknown {
+                    info!(
+                        "The configured model checker could not determine whether the threshold automaton satisfies property: {property}"
+                    );
                 }
             }
             taco_model_checker::ModelCheckerResult::UNKNOWN(unknown) => {
@@ -651,7 +659,10 @@ pub fn display_result(
             taco_model_checker::ModelCheckerResult::SAFE => {
                 info!("Threshold automaton satisfies all properties. The protocol is safe.")
             }
-            taco_model_checker::ModelCheckerResult::UNSAFE(violations) => {
+            taco_model_checker::ModelCheckerResult::UNSAFE {
+                violations,
+                unknown,
+            } => {
                 for (property, error_path) in violations {
                     if compact_out {
                         info!(
@@ -661,6 +672,11 @@ pub fn display_result(
                     } else {
                         info!("Counter example to property '{property}': {error_path}\n")
                     }
+                }
+                for property in unknown {
+                    info!(
+                        "The configured model checker could not determine whether the threshold automaton satisfies property: {property}"
+                    );
                 }
                 info!("The protocol is unsafe.")
             }

@@ -10,7 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: "1.95.0"
+  RUST_VERSION: "1.98.1"
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -34,14 +34,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Install dependencies
         run: sudo apt-get install -y python3 python3-pip nodejs npm --no-install-recommends
       - name: Install cargo, MyST and cargo-about
         run: |
           rustup install ${RUST_VERSION}
           pip3 install mystmd --break-system-packages
-          cargo +${RUST_VERSION} install --locked cargo-about
+          cargo +${RUST_VERSION} install --locked --features cli cargo-about
       - name: Generate Docs
         run: |
           cd ./docs && myst build --html --ci --port 3042 && cd ../

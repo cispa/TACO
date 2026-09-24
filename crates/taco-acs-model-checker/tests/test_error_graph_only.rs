@@ -5,18 +5,19 @@
 mod test_error_graph_construction_only {
     use std::{env, fs, time::Instant};
 
+    use log::warn;
     use taco_acs_model_checker::{
         acs_threshold_automaton::ACSThresholdAutomaton, error_graph::ErrorGraph,
     };
     use taco_interval_ta::{IntervalThresholdAutomaton, builder::IntervalTABuilder};
 
     use taco_model_checker::{
-        SpecificationTrait, TATrait, TargetSpec,
+        SpecificationTrait, TASpecification, TATrait,
+        internal_spec::{ErrorSpec, ErrorTarget},
         preprocessing::{
             self, DropSelfLoops, DropUnreachableLocations, RemoveUnusedVariables,
             ReplaceTrivialGuardsSMT,
         },
-        reachability_specification::ReachabilityProperty,
     };
     use taco_parser::{ParseTAWithLTL, bymc::ByMCParser};
     use taco_smt_encoder::{SMTSolverBuilder, SMTSolverBuilderCfg};
@@ -63,7 +64,7 @@ mod test_error_graph_construction_only {
                 let parsed_spec = ltl
                     .expressions()
                     .iter()
-                    .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+                    .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
                     .collect::<Vec<_>>();
 
                 println!("Parsed {} ltl expressions into spec", parsed_spec.len());
@@ -76,11 +77,10 @@ mod test_error_graph_construction_only {
                 ];
                 let ctx = SMTSolverBuilder::new(&SMTSolverBuilderCfg::new_z3()).unwrap();
 
-                let ta_spec =
-                    ReachabilityProperty::transform_threshold_automaton(ta, parsed_spec, &ctx);
+                let ta_spec = ErrorSpec::transform_threshold_automaton(ta, parsed_spec, &ctx);
                 let ta_spec = ta_spec
                     .into_iter()
-                    .map(|(spec, mut ta)| {
+                    .map(|(_, spec, mut ta)| {
                         // Preprocessing on tas with information from the specification
                         for processor in preprocessors.iter() {
                             processor.process(&mut ta, &spec, &ctx);
@@ -96,6 +96,11 @@ mod test_error_graph_construction_only {
                 for (spec, interval_tas) in ta_spec {
                     for ta in interval_tas {
                         let cs_ta = ACSThresholdAutomaton::new(ta);
+
+                        let ErrorTarget::Reach(spec) = &spec else {
+                            warn!("Skipping Liveness");
+                            continue;
+                        };
 
                         let _error_graph =
                             ErrorGraph::compute_error_graph(spec.clone(), cs_ta.clone());
@@ -128,7 +133,7 @@ mod test_error_graph_construction_only {
         let parsed_spec = ltl
             .expressions()
             .iter()
-            .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+            .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
             .collect::<Vec<_>>();
 
         let ta_spec = parsed_spec
@@ -148,15 +153,17 @@ mod test_error_graph_construction_only {
                 let interval_tas = IntervalTABuilder::new(
                     lia_ta,
                     SMTSolverBuilder::default(),
-                    spec.get_variable_constraint()
-                        .into_iter()
-                        .cloned()
-                        .collect(),
+                    spec.var_constraint().into_iter().cloned().collect(),
                 )
                 .build()
                 .unwrap();
                 for ta in interval_tas {
                     let cs_ta = ACSThresholdAutomaton::new(ta);
+
+                    let ErrorTarget::Reach(spec) = &spec else {
+                        warn!("Skipping Liveness");
+                        continue;
+                    };
 
                     let error_graph = ErrorGraph::compute_error_graph(spec.clone(), cs_ta);
                     assert!(
@@ -182,7 +189,7 @@ mod test_error_graph_construction_only {
         let parsed_spec = ltl
             .expressions()
             .iter()
-            .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+            .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
             .collect::<Vec<_>>();
 
         let ta_spec = parsed_spec
@@ -202,20 +209,23 @@ mod test_error_graph_construction_only {
                 let interval_tas = IntervalTABuilder::new(
                     lia_ta,
                     SMTSolverBuilder::default(),
-                    spec.get_variable_constraint()
-                        .into_iter()
-                        .cloned()
-                        .collect(),
+                    spec.var_constraint().into_iter().cloned().collect(),
                 )
                 .build()
                 .unwrap();
                 for ta in interval_tas {
                     let cs_ta = ACSThresholdAutomaton::new(ta);
 
+                    let org_tgt = &spec;
+                    let ErrorTarget::Reach(spec) = &spec else {
+                        warn!("Skipping Liveness");
+                        continue;
+                    };
+
                     let error_graph = ErrorGraph::compute_error_graph(spec.clone(), cs_ta);
                     assert!(
                         error_graph.is_empty(),
-                        "strb error graph was found to be non empty!"
+                        "strb error graph for spec '{org_tgt}' was found to be non empty!"
                     );
                 }
             }
@@ -236,7 +246,7 @@ mod test_error_graph_construction_only {
         let parsed_spec = ltl
             .expressions()
             .iter()
-            .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+            .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
             .collect::<Vec<_>>();
 
         let ta_spec = parsed_spec
@@ -256,15 +266,17 @@ mod test_error_graph_construction_only {
                 let interval_tas = IntervalTABuilder::new(
                     lia_ta,
                     SMTSolverBuilder::default(),
-                    spec.get_variable_constraint()
-                        .into_iter()
-                        .cloned()
-                        .collect(),
+                    spec.var_constraint().into_iter().cloned().collect(),
                 )
                 .build()
                 .unwrap();
                 for ta in interval_tas {
                     let cs_ta = ACSThresholdAutomaton::new(ta);
+
+                    let ErrorTarget::Reach(spec) = &spec else {
+                        warn!("Skipping Liveness");
+                        continue;
+                    };
 
                     let error_graph = ErrorGraph::compute_error_graph(spec.clone(), cs_ta);
                     assert!(

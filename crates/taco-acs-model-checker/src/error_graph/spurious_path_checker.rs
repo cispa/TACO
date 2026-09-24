@@ -7,8 +7,7 @@ use std::{
     rc::Rc,
 };
 use taco_display_utils::join_iterator;
-use taco_model_checker::ModelCheckerResult;
-use taco_model_checker::reachability_specification::DisjunctionTargetConfig;
+use taco_model_checker::{ModelCheckerResult, internal_spec::upwards_closed_set::UpwardsClosedSet};
 use taco_smt_encoder::SMTSolverContext;
 use taco_smt_encoder::expression_encoding::EncodeToSMT;
 use taco_smt_encoder::expression_encoding::ctx_mgr::SMTConfigMgr;
@@ -34,17 +33,13 @@ type StepCtx = LazyStepContext<ACSThresholdAutomaton, ConfigCtx>;
 
 pub struct SpuriousGraphChecker {
     solver: SMTSolver,
-    spec: DisjunctionTargetConfig,
+    spec: UpwardsClosedSet,
     cs_ta: Rc<ACSThresholdAutomaton>,
     ctx_mgr: SMTConfigMgr<StepCtx, ConfigCtx>,
 }
 
 impl SpuriousGraphChecker {
-    pub fn new(
-        ta: &ACSThresholdAutomaton,
-        spec: DisjunctionTargetConfig,
-        mut solver: SMTSolver,
-    ) -> Self {
+    pub fn new(ta: &ACSThresholdAutomaton, spec: UpwardsClosedSet, mut solver: SMTSolver) -> Self {
         let params = Rc::new(
             ta.parameters()
                 .map(|p| {
@@ -426,10 +421,10 @@ impl SpuriousGraphChecker {
                 &mut self.solver,
                 self.cs_ta.get_interval_ta().get_ta().clone(),
             );
-            return ModelCheckerResult::UNSAFE(vec![(
-                self.spec.name().to_string(),
-                Box::new(path),
-            )]);
+            return ModelCheckerResult::UNSAFE {
+                violations: vec![(self.spec.to_string(), Box::new(path))],
+                unknown: Vec::new(),
+            };
         }
 
         self.solver
@@ -448,7 +443,7 @@ mod tests {
 
     use taco_interval_ta::IntervalThresholdAutomaton;
     use taco_model_checker::{
-        ModelCheckerResult, TATrait, reachability_specification::TargetConfig,
+        ModelCheckerResult, TATrait, internal_spec::upwards_closed_set::UpwardsClosedSet,
     };
     use taco_parser::{ParseTA, bymc::ByMCParser};
     use taco_smt_encoder::SMTSolverBuilder;
@@ -505,9 +500,7 @@ mod tests {
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
         let solver_builder = SMTSolverBuilder::default();
 
-        let spec = TargetConfig::new_cover([Location::new("loc2")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc2")]);
 
         let test_tas =
             IntervalThresholdAutomaton::try_from_general_ta(ta.clone(), &solver_builder, &spec)
@@ -549,7 +542,7 @@ mod tests {
 
         let res = match res {
             ModelCheckerResult::SAFE => unreachable!("checked above"),
-            ModelCheckerResult::UNSAFE(v) => {
+            ModelCheckerResult::UNSAFE { violations: v, .. } => {
                 assert_eq!(v.len(), 1);
                 *v[0].1.clone()
             }
@@ -607,9 +600,7 @@ mod tests {
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
         let solver_builder = SMTSolverBuilder::default();
 
-        let spec = TargetConfig::new_cover([Location::new("loc2")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc2")]);
 
         let test_tas =
             IntervalThresholdAutomaton::try_from_general_ta(ta.clone(), &solver_builder, &spec)
@@ -669,7 +660,7 @@ mod tests {
 
         let res = match res {
             ModelCheckerResult::SAFE => unreachable!("checked above"),
-            ModelCheckerResult::UNSAFE(v) => {
+            ModelCheckerResult::UNSAFE { violations: v, .. } => {
                 assert_eq!(v.len(), 1);
                 *v[0].1.clone()
             }
@@ -729,9 +720,7 @@ mod tests {
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
         let solver_builder = SMTSolverBuilder::default();
 
-        let spec = TargetConfig::new_general_cover([(Location::new("loc2"), 5)])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover_int([(Location::new("loc2"), 5)]);
 
         let test_tas =
             IntervalThresholdAutomaton::try_from_general_ta(ta.clone(), &solver_builder, &spec)
@@ -790,7 +779,7 @@ mod tests {
 
         let res = match res {
             ModelCheckerResult::SAFE => unreachable!("checked above"),
-            ModelCheckerResult::UNSAFE(v) => {
+            ModelCheckerResult::UNSAFE { violations: v, .. } => {
                 assert_eq!(v.len(), 1);
                 *v[0].1.clone()
             }
@@ -848,9 +837,7 @@ mod tests {
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
         let solver_builder = SMTSolverBuilder::default();
 
-        let spec = TargetConfig::new_cover([Location::new("loc3")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc3")]);
 
         let test_tas =
             IntervalThresholdAutomaton::try_from_general_ta(ta.clone(), &solver_builder, &spec)
@@ -918,9 +905,7 @@ mod tests {
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
         let solver_builder = SMTSolverBuilder::default();
 
-        let spec = TargetConfig::new_cover([Location::new("loc2")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc2")]);
 
         let test_tas =
             IntervalThresholdAutomaton::try_from_general_ta(ta.clone(), &solver_builder, &spec)
@@ -1063,7 +1048,7 @@ mod tests {
 
         let res = match res {
             ModelCheckerResult::SAFE => unreachable!("checked above"),
-            ModelCheckerResult::UNSAFE(v) => {
+            ModelCheckerResult::UNSAFE { violations: v, .. } => {
                 assert_eq!(v.len(), 1);
                 *v[0].1.clone()
             }
@@ -1130,9 +1115,7 @@ mod tests {
         let ta = ByMCParser::new().parse_ta(test_spec).unwrap();
         let solver_builder = SMTSolverBuilder::default();
 
-        let spec = TargetConfig::new_cover([Location::new("loc3")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc3")]);
 
         let test_tas =
             IntervalThresholdAutomaton::try_from_general_ta(ta.clone(), &solver_builder, &spec)
@@ -1295,7 +1278,7 @@ mod tests {
 
         let res = match res {
             ModelCheckerResult::SAFE => unreachable!("checked above"),
-            ModelCheckerResult::UNSAFE(v) => {
+            ModelCheckerResult::UNSAFE { violations: v, .. } => {
                 assert_eq!(v.len(), 1);
                 *v[0].1.clone()
             }

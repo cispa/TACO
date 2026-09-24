@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use log::{debug, info};
-use taco_model_checker::reachability_specification::DisjunctionTargetConfig;
+use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
 
 use crate::{
     acs_threshold_automaton::{
@@ -66,7 +66,7 @@ impl ErrorGraphNode {
     /// [`ErrorGraphNode::compute_predecessors_and_insert_to_graph`]
     /// for all computed nodes until the `to_explore_queue` is empty
     pub fn new_roots_from_spec(
-        spec: &DisjunctionTargetConfig,
+        spec: &UpwardsClosedSet,
         ta: &ACSThresholdAutomaton,
     ) -> PartiallyOrderedConfigMap<NodeRef> {
         let error_level = 0;
@@ -307,7 +307,8 @@ mod tests {
 
     use taco_display_utils::join_iterator;
     use taco_interval_ta::builder::IntervalTABuilder;
-    use taco_model_checker::reachability_specification::{DisjunctionTargetConfig, TargetConfig};
+
+    use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
     use taco_smt_encoder::SMTSolverBuilder;
     use taco_threshold_automaton::{
         expressions::{
@@ -459,9 +460,7 @@ mod tests {
 
         let loc_l3 = ta.to_cs_loc(&Location::new("l3"));
 
-        let spec = TargetConfig::new_cover([Location::new("l3")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("l3")]);
 
         let created_node_map = ErrorGraphNode::new_roots_from_spec(&spec, &ta);
         let created_nodes = created_node_map
@@ -495,13 +494,11 @@ mod tests {
         let loc_l2 = ta.to_cs_loc(&Location::new("l2"));
         let loc_l3 = ta.to_cs_loc(&Location::new("l3"));
 
-        let spec = TargetConfig::new_cover([
+        let spec = UpwardsClosedSet::new_cover([
             Location::new("l3"),
             Location::new("l2"),
             Location::new("l1"),
-        ])
-        .unwrap()
-        .into_disjunct_with_name("test");
+        ]);
 
         let created_node_map = ErrorGraphNode::new_roots_from_spec(&spec, &ta);
         let created_nodes = created_node_map
@@ -537,14 +534,9 @@ mod tests {
         let loc_l2 = ta.to_cs_loc(&Location::new("l2"));
         let loc_l3 = ta.to_cs_loc(&Location::new("l3"));
 
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".into(),
-            [
-                TargetConfig::new_cover([Location::new("l3")]).unwrap(),
-                TargetConfig::new_cover([Location::new("l2")]).unwrap(),
-                TargetConfig::new_cover([Location::new("l1")]).unwrap(),
-            ],
-        );
+        let spec = UpwardsClosedSet::new_cover([Location::new("l3")])
+            | UpwardsClosedSet::new_cover([Location::new("l2")])
+            | UpwardsClosedSet::new_cover([Location::new("l1")]);
 
         let created_node_map = ErrorGraphNode::new_roots_from_spec(&spec, &ta);
         let created_nodes = created_node_map
@@ -669,13 +661,11 @@ mod tests {
 
         let var_x = ta.to_cs_var(&Variable::new("x"));
 
-        let spec = TargetConfig::new_cover([
+        let spec = UpwardsClosedSet::new_cover([
             Location::new("l3"),
             Location::new("l2"),
             Location::new("l1"),
-        ])
-        .unwrap()
-        .into_disjunct_with_name("test");
+        ]);
 
         // The target config will be (1, 1, 1) and should already be a
         // fix point
@@ -799,13 +789,11 @@ mod tests {
 
         let var_x = ta.to_cs_var(&Variable::new("x"));
 
-        let spec = TargetConfig::new_cover([
+        let spec = UpwardsClosedSet::new_cover([
             Location::new("l3"),
             Location::new("l2"),
             Location::new("l1"),
-        ])
-        .unwrap()
-        .into_disjunct_with_name("test");
+        ]);
 
         // The target config will be (1, 1, 1) and should already be a
         // fix point
@@ -921,13 +909,13 @@ mod tests {
             .with_initial_variable_constraints([
                 BooleanExpression::ComparisonExpression(
                     Box::new(IntegerExpression::Atom(Variable::new("x"))),
-                    ComparisonOp::Eq,
-                    Box::new(IntegerExpression::Const(0)),
+                    ComparisonOp::Lt,
+                    Box::new(IntegerExpression::Const(1)),
                 ),
                 BooleanExpression::ComparisonExpression(
                     Box::new(IntegerExpression::Atom(Variable::new("y"))),
-                    ComparisonOp::Eq,
-                    Box::new(IntegerExpression::Const(0)),
+                    ComparisonOp::Lt,
+                    Box::new(IntegerExpression::Const(1)),
                 ),
             ])
             .unwrap()
@@ -959,13 +947,11 @@ mod tests {
 
         let var_x = ta.to_cs_var(&Variable::new("x"));
 
-        let spec = TargetConfig::new_cover([
+        let spec = UpwardsClosedSet::new_cover([
             Location::new("l3"),
             Location::new("l2"),
             Location::new("l1"),
-        ])
-        .unwrap()
-        .into_disjunct_with_name("test");
+        ]);
 
         // The target config will be (1, 1, 1) and should already be a
         // fix point
@@ -1068,7 +1054,7 @@ mod tests {
 
         assert!(
             created_nodes.iter().all(|n| expected_nodes.contains(n)),
-            "got: {}\n expected: {}\n missing: {:?}",
+            "got: {}\n expected: {}\n additional: {}",
             join_iterator(
                 created_nodes
                     .iter()
@@ -1081,10 +1067,13 @@ mod tests {
                     .map(|n| { n.config.display_compact(&ta) }),
                 ","
             ),
-            created_nodes
-                .iter()
-                .find(|n| !expected_nodes.contains(n))
-                .unwrap()
+            join_iterator(
+                created_nodes
+                    .iter()
+                    .filter(|n| !expected_nodes.contains(n))
+                    .map(|n| { n.config.display_compact(&ta) }),
+                "; "
+            )
         );
         assert!(expected_nodes.iter().all(|n| created_nodes.contains(n)));
     }

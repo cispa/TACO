@@ -1,4 +1,4 @@
-FROM rust:1.94-slim AS BUILD
+FROM rust:1.98-slim AS BUILD
 
 RUN apt update && apt-get install -y --no-install-recommends\
         # CUDD build dependencies
@@ -14,11 +14,11 @@ RUN cargo build --release --all-features --bin taco-cli
 RUN cargo install cargo-sbom 
 RUN cargo sbom > sbom.spdx.json
 # LICENSES
-RUN cargo install cargo-about
+RUN cargo install --locked --features cli cargo-about
 RUN cargo about generate --workspace ./.config/about.hbs > third-party-licenses.html
 
 
-FROM quay.io/fedora/fedora-minimal:43 AS RUN
+FROM quay.io/fedora/fedora-minimal:44 AS RUN
 
 LABEL org.opencontainers.image.licenses="Apache 2.0"
 LABEL org.opencontainers.image.authors="Tom Baumeister, Paul Eichler, Peter Gastauer"

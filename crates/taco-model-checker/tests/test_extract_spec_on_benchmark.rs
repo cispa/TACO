@@ -5,8 +5,11 @@ use taco_parser::bymc::ByMCParser;
 mod test_extract_spec_from_benchmarks {
     use std::{env, fs};
 
-    use taco_model_checker::reachability_specification::ReachabilityProperty;
+    use env_logger::Env;
+    use taco_model_checker::{SpecificationTrait, internal_spec::ErrorSpec};
     use taco_parser::ParseTAWithLTL;
+    use taco_smt_encoder::SMTSolverBuilder;
+
     use walkdir::WalkDir;
 
     use super::ByMCParser;
@@ -19,6 +22,11 @@ mod test_extract_spec_from_benchmarks {
     #[test]
     fn test_extract_spec() {
         println!("Start {}", env::current_dir().unwrap().display());
+
+        let env = Env::default()
+            .filter_or("MY_LOG_LEVEL", "info")
+            .write_style_or("MY_LOG_STYLE", "always");
+        env_logger::init_from_env(env);
 
         for entry in WalkDir::new(BYMC_BENCHMARK_FOLDER)
             .follow_links(true)
@@ -50,11 +58,11 @@ mod test_extract_spec_from_benchmarks {
 
                 println!("Parsed successfully");
 
-                let parsed_spec = ltl
-                    .expressions()
-                    .iter()
-                    .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
-                    .collect::<Vec<_>>();
+                let ctx = SMTSolverBuilder::default();
+
+                let (parsed_spec, _) = ErrorSpec::try_from_eltl(ltl.into_iter(), &ctx).unwrap();
+
+                assert!(!parsed_spec.is_empty());
 
                 println!("Parsed {} ltl expressions into spec", parsed_spec.len());
             }

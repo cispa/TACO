@@ -7,7 +7,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: "1.95.0"
+  RUST_VERSION: "1.98.1"
 
 jobs:
   # Check formatting & basic code validity
@@ -17,7 +17,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install rust version
         run: rustup install ${RUST_VERSION}
       - name: Add rustfmt
@@ -35,7 +35,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install rust version
         run: rustup install ${RUST_VERSION}
       - name: Run Doctests
@@ -43,7 +43,7 @@ jobs:
       - name: Generate Documentation
         run: cargo doc --no-deps --document-private-items --workspace
       - name: Install cargo-about
-        run: cargo +${RUST_VERSION} install cargo-about
+        run: cargo +${RUST_VERSION} install --locked --features cli cargo-about
       - name: Run license_check
         run: cargo about generate --workspace ./.config/about.hbs > third-party-licenses.html
 
@@ -55,7 +55,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install rust version
         run: rustup install ${RUST_VERSION}
       - name: Add clippy
@@ -71,7 +71,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install rust version
         run: rustup install ${RUST_VERSION}
       - name: Install Dependencies (Z3,CVC5,Graphviz)
@@ -114,7 +114,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install rust version
         run: rustup install ${RUST_VERSION}
       - name: Install Dependencies (Z3,Graphviz)
@@ -159,7 +159,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install rust version
         run: rustup install ${RUST_VERSION}
       - name: Install Dependencies (Z3,CVC5,Graphviz)

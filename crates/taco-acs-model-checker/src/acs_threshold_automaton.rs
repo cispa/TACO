@@ -527,6 +527,10 @@ impl CSRule {
         self.guard.is_satisfied(cfg.interval_state()) && cfg.location_state()[self.source()] > 0
     }
 
+    pub fn is_guard_enabled(&self, is: &ACSIntervalState) -> bool {
+        self.guard.is_satisfied(is)
+    }
+
     /// Get the id of the rule
     pub fn id(&self) -> u32 {
         self.id
@@ -777,7 +781,7 @@ mod tests {
                 &BooleanExpression::ComparisonExpression(
                     Box::new(IntegerExpression::Const(1)),
                     ComparisonOp::Lt,
-                    Box::new(IntegerExpression::Const(3)),
+                    Box::new(IntegerExpression::Const(2)),
                 ),
             ])
         );
@@ -799,7 +803,7 @@ mod tests {
                 target: ta.idx_ctx.to_cs_loc(&Location::new("l2")),
                 guard: CSIntervalConstraint::VarGuard(
                     ta.idx_ctx.to_cs_var(&Variable::new("x")),
-                    vec![ACSInterval(2)]
+                    vec![ACSInterval(3)]
                 ),
                 actions: vec![CSIntervalAction {
                     var: ta.idx_ctx.to_cs_var(&Variable::new("x")),
@@ -847,7 +851,12 @@ mod tests {
         assert_eq!(
             ta.get_all_intervals(&ta.idx_ctx.to_cs_var(&Variable::new("x")))
                 .collect::<HashSet<_>>(),
-            HashSet::from([&ACSInterval(0), &ACSInterval(1), &ACSInterval(2)])
+            HashSet::from([
+                &ACSInterval(0),
+                &ACSInterval(1),
+                &ACSInterval(2),
+                &ACSInterval(3)
+            ])
         );
         assert_eq!(
             ta.get_all_intervals(&ta.idx_ctx.to_cs_var(&Variable::new("y")))
@@ -856,7 +865,7 @@ mod tests {
         );
 
         assert_eq!(
-            ta.get_next_interval(&ta.idx_ctx.to_cs_var(&Variable::new("x")), &ACSInterval(2)),
+            ta.get_next_interval(&ta.idx_ctx.to_cs_var(&Variable::new("x")), &ACSInterval(3)),
             None
         );
         assert_eq!(

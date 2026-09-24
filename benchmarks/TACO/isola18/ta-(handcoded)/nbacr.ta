@@ -108,33 +108,13 @@ skel Proc {
     /*agreement: [](locCMT == 0 || locABR == 0);*/
     
     nontriv:
-        (<>[](locNO == 0 && locYES == 0 && locSEFD == 0
-                && (nsntNoCF < 1 || locSE == 0)
-                && (nsntYesCF < N || nsntNoCF >= 1 || locSE == 0))
-            &&
-        [](locSEFD == 0 && locCR == 0) /* nobody gets suspicious, nor crashes */
-            &&
-        locNO == 0) /* everybody starts with yes */
-            ->
         <>(locNO == 0 && locYES == 0 && locSE == 0
                 && locSEFD == 0 && locABR == 0 && locCR == 0); /* all commit */
  
     termination1:
-        (<>[](locNO == 0 && locYES == 0 && locSEFD == 0
-                && (nsntNoCF < 1 || locSE == 0)
-                && (nsntYesCF < N || nsntNoCF >= 1 || locSE == 0))
-            &&
-        [](locCR == 0)) /* nobody crashes */
-            ->
         <>(locNO == 0 && locYES == 0 && locSE == 0 && locSEFD == 0); /* all decide */
     
     termination2:
-        (<>[](locNO == 0 && locYES == 0 && locSEFD == 0
-                && (nsntNoCF < 1 || locSE == 0)
-                && (nsntYesCF < N || nsntNoCF >= 1 || locSE == 0))
-            &&
-        <>[](locSE == 0)) /* all get suspicious */
-            ->
         <>(locNO == 0 && locYES == 0 && locSE == 0 && locSEFD == 0); /* all decide */
   }
 } /* Proc */

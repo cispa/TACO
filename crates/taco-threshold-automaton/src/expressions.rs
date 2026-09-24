@@ -27,6 +27,62 @@ use std::{
 pub mod fraction;
 pub mod properties;
 
+/// Trait for expressions that support conjunctions
+///
+/// This trait is implemented by expressions that support conjunctions, like
+/// boolean expressions over variables or parameters
+pub trait And {
+    /// Get the conjunction of `self` and `other`
+    fn and(self, other: Self) -> Self;
+}
+
+/// Implements `BitAnd` for type by delegating to [`And::and`]
+///
+/// A blanket `impl<T: And> BitAnd for T` is not allowed, therefore
+/// implementations can be derived using this macros instead
+#[macro_export]
+macro_rules! impl_bitand {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl std::ops::BitAnd for $ty {
+                type Output = Self;
+
+                fn bitand(self, rhs: Self) -> Self::Output {
+                    self.and(rhs)
+                }
+            }
+        )+
+    };
+}
+
+/// Trait for expressions that support building disjunctions
+///
+/// This trait is implemented by expressions that support disjunctions, like
+/// boolean expressions over variables or parameters
+pub trait Or {
+    /// Get the disjunction of `self` and `other`
+    fn or(self, other: Self) -> Self;
+}
+
+/// Implements `BitOr` for type by delegating to [`Or::or`]
+///
+/// A blanket `impl<T: Or> BitOr for T` is not allowed, therefore
+/// implementations can be derived using this macros instead
+#[macro_export]
+macro_rules! impl_bitor {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl std::ops::BitOr for $ty {
+                type Output = Self;
+
+                fn bitor(self, rhs: Self) -> Self::Output {
+                    self.or(rhs)
+                }
+            }
+        )+
+    };
+}
+
 /// Atomic trait implemented by atomic expressions
 ///
 /// This trait is implemented by types that can be used in atomic expressions,

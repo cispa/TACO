@@ -160,6 +160,32 @@ impl ZCSErrorGraph<'_> {
         &self,
         smc_ctx: &ZCSModelCheckerContext,
     ) -> SpuriousResult {
+        // all possible variable assignments
+        let all_possible_assignments = self.get_all_possible_variable_assignments();
+
+        // initial states that are already error states, i.e., error paths
+        // without any transition
+        let (non_empty, initial_error_states) = self.get_error_intersection(self.initial_states());
+        if non_empty {
+            for assignment in all_possible_assignments.iter() {
+                if initial_error_states.contains_sym_assignment(assignment) {
+                    let error_path = SteadyErrorPath::new(
+                        SteadyPath::new(
+                            vec![],
+                            initial_error_states.intersect_assignment(assignment),
+                            assignment.clone(),
+                        ),
+                        self,
+                    );
+
+                    let res = error_path.is_non_spurious(true, smc_ctx);
+                    if res.is_non_spurious() {
+                        return res;
+                    }
+                }
+            }
+        }
+
         // assignments that are reached except for error states
         let reachable_assignments = self.compute_reachable_variable_assignments();
         let mut queue: VecDeque<SteadyErrorPath> = VecDeque::new();
@@ -177,9 +203,6 @@ impl ZCSErrorGraph<'_> {
         // i.e., the first spurious ce, then the 10th, then the 100th, etc.
         let mut spurious_ce_count = 0;
         let mut next_to_print = 1;
-
-        // all possible variable assignments
-        let all_possible_assignments = self.get_all_possible_variable_assignments();
 
         while !queue.is_empty() {
             let steady_error_path = queue.pop_front().unwrap();
@@ -359,7 +382,8 @@ mod tests {
     use taco_interval_ta::interval::IntervalBoundary;
     use taco_interval_ta::{IntervalActionEffect, IntervalConstraint};
     use taco_model_checker::ModelCheckerContext;
-    use taco_model_checker::reachability_specification::TargetConfig;
+    use taco_model_checker::internal_spec::ErrorTarget;
+    use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
     use taco_smt_encoder::SMTSolverBuilder;
     use taco_threshold_automaton::ParameterConstraint;
     use taco_threshold_automaton::expressions::fraction::Fraction;
@@ -770,14 +794,13 @@ mod tests {
         let error_graph_builder = ZCSErrorGraphBuilder::new(cs, error_states);
         let sym_err_graph = error_graph_builder.build();
 
-        let spec = TargetConfig::new_reach(
-            [Location::new("l2")],
-            vec![Location::new("l0"), Location::new("l1")],
-        )
-        .unwrap()
-        .into_disjunct_with_name("test");
+        let spec = ErrorTarget::Reach(UpwardsClosedSet::new_reach(
+            [(Location::new("l2"), 1)],
+            [Location::new("l0"), Location::new("l1")],
+        ));
 
         let ctx = SMTBddContext::try_new(None).unwrap();
+
         let smc_ctx = ZCSModelCheckerContext::new(
             &ctx,
             ZCSModelCheckerHeuristics::DecrementAndIncrementHeuristics,
@@ -1169,9 +1192,7 @@ mod tests {
         let error_graph_builder = ZCSErrorGraphBuilder::new(cs, error_states);
         let sym_err_graph = error_graph_builder.build();
 
-        let spec = TargetConfig::new_cover([Location::new("l3")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = ErrorTarget::Reach(UpwardsClosedSet::new_cover([Location::new("l3")]));
 
         let ctx = SMTBddContext::try_new(None).unwrap();
         let smc_ctx = ZCSModelCheckerContext::new(

@@ -18,7 +18,7 @@ use std::{collections::HashMap, ops::Deref, rc::Rc};
 use log::{debug, info};
 use taco_display_utils::join_iterator;
 
-use taco_model_checker::reachability_specification::DisjunctionTargetConfig;
+use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
 use taco_smt_encoder::{
     SMTExpr, SMTSolver, SMTSolverBuilder, SMTSolverContext,
     expression_encoding::{
@@ -168,10 +168,10 @@ impl EContextMgr {
         })
     }
 
-    /// Check whether spec holds
+    /// Check whether the upwards closed set `spec` is reachable
     ///
-    /// If the specification holds `None` is returned. Otherwise an error path is returned
-    pub fn check_spec(mut self, spec: &DisjunctionTargetConfig) -> Option<Path> {
+    /// If the set is not reachable `None` is returned. Otherwise an error path is returned
+    pub fn check_spec(mut self, spec: &UpwardsClosedSet) -> Option<Path> {
         self.encode_phi_reach(spec);
 
         debug!("Start check of ϕ_{{reach}}");
@@ -262,7 +262,7 @@ impl EContextMgr {
     }
 
     /// Encodes the ϕ_{reach} of the threshold automaton
-    fn encode_phi_reach(&mut self, spec: &DisjunctionTargetConfig) {
+    fn encode_phi_reach(&mut self, spec: &UpwardsClosedSet) {
         // RC(p)
         let rc = encode_resilience_condition(
             self.ta.as_ref(),
@@ -312,12 +312,12 @@ impl EContextMgr {
 
         info!(
             "Finished SMT encoding ϕ_{{reach}} for property '{}', start checking in SMT solver",
-            spec.name()
+            spec
         );
     }
 
     /// Encodes the goal condition of the threshold automaton into an SMT
-    fn encode_final_error_condition(&self, spec: &DisjunctionTargetConfig) -> SMTExpr {
+    fn encode_final_error_condition(&self, spec: &UpwardsClosedSet) -> SMTExpr {
         spec.encode_to_smt_with_ctx(
             &self.solver,
             self.ctx_mgr.configs_primed().last().unwrap().as_ref(),
@@ -331,7 +331,7 @@ mod tests {
 
     use std::collections::HashMap;
 
-    use taco_model_checker::reachability_specification::TargetConfig;
+    use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
     use taco_parser::{ParseTA, bymc::ByMCParser};
     use taco_smt_encoder::SMTSolverBuilder;
     use taco_threshold_automaton::{
@@ -711,9 +711,7 @@ mod tests {
 
         let ctx_mgr = EContextMgr::new(ta.clone(), &[], &SMTSolverBuilder::default())
             .expect("Failed to create context manager");
-        let spec = TargetConfig::new_cover([Location::new("loc1")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc1")]);
 
         let path = PathBuilder::new(ta)
             .add_parameter_assignment(HashMap::from([
@@ -786,9 +784,7 @@ mod tests {
 
         let ctx_mgr = EContextMgr::new(ta.clone(), &[], &SMTSolverBuilder::default())
             .expect("Failed to create context manager");
-        let spec = TargetConfig::new_cover([Location::new("loc2")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc2")]);
 
         let path = PathBuilder::new(ta)
             .add_parameter_assignment(HashMap::from([
@@ -880,9 +876,8 @@ mod tests {
 
         let ctx_mgr = EContextMgr::new(ta.clone(), &[], &SMTSolverBuilder::default())
             .expect("Failed to create context manager");
-        let spec = TargetConfig::new_reach([Location::new("loc2")], [Location::new("loc1")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec =
+            UpwardsClosedSet::new_reach([(Location::new("loc2"), 1)], [Location::new("loc1")]);
 
         let path = PathBuilder::new(ta)
             .add_parameter_assignment(HashMap::from([
@@ -972,9 +967,7 @@ mod tests {
 
         let ctx_mgr = EContextMgr::new(ta, &[], &SMTSolverBuilder::default())
             .expect("Failed to create context manager");
-        let spec = TargetConfig::new_cover([Location::new("loc3")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc3")]);
 
         let res = ctx_mgr.check_spec(&spec);
 
@@ -1029,9 +1022,7 @@ mod tests {
 
         let ctx_mgr = EContextMgr::new(ta.clone(), &[], &SMTSolverBuilder::default())
             .expect("Failed to create context manager");
-        let spec = TargetConfig::new_cover([Location::new("loc2")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc2")]);
 
         let path = PathBuilder::new(ta)
             .add_parameter_assignment(HashMap::from([
@@ -1197,9 +1188,7 @@ mod tests {
 
         let ctx_mgr = EContextMgr::new(ta.clone(), &[], &SMTSolverBuilder::default())
             .expect("Failed to create context manager");
-        let spec = TargetConfig::new_cover([Location::new("loc3")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("loc3")]);
 
         let path = PathBuilder::new(ta)
             .add_parameter_assignment(HashMap::from([

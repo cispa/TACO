@@ -308,21 +308,11 @@ thresholdAutomaton Proc {
         (locV2 == 0) -> [] (locD2 == 0);
 
     round_term:
-        <>[](  (3 * (sP10 + sP11 + sP12) < 2 * (N - 2) + 3
-                    || locP1 == 0)
-            && (2 * (sP20 + sP21 + sP22 + sP2bot) < (N - 1) + 2 || locP2 == 0)
-            && locV0 == 0 && locV1 == 0 && locV2 == 0)
-            ->
-            <> (locV0 == 0 && locV1 == 0 && locV2 == 0
+       <> (locV0 == 0 && locV1 == 0 && locV2 == 0
                 && locP1 == 0 && locP2 == 0);
 
     decide_or_flip:
-        <>[](  (3 * (sP10 + sP11 + sP12) < 2 * (N - 2) + 3
-                    || locP1 == 0)
-            && (2 * (sP20 + sP21 + sP22 + sP2bot) < (N - 1) + 2 || locP2 == 0)
-            && locV0 == 0 && locV1 == 0 && locV2 == 0)
-            ->
-            <> (locV0 == 0 && locV1 == 0 && locV2 == 0
+       <> (locV0 == 0 && locV1 == 0 && locV2 == 0
                     && locP1 == 0 && locP2 == 0
                     && locD0 == 0 && locE0 == 0
                     || 
@@ -335,31 +325,13 @@ thresholdAutomaton Proc {
                     && locD2 == 0 && locE2 == 0);
 
     univalent20:
-        <>[](  (3 * (sP10 + sP11 + sP12) < 2 * (N - 2) + 3
-                    || locP1 == 0)
-            && (2 * (sP20 + sP21 + sP22 + sP2bot) < (N - 1) + 2 || locP2 == 0)
-            && locV0 == 0 && locV1 == 0 && locV2 == 0)
-        && (locV1 == 0 && locV2 == 0) /* all processes start with 0 */
-        ->
         <> (locD0 != 0 || locE0 != 0);
 
     univalent21:
-        <>[](  (3 * (sP10 + sP11 + sP12) < 2 * (N - 2) + 3
-                    || locP1 == 0)
-            && (2 * (sP20 + sP21 + sP22 + sP2bot) < (N - 1) + 2 || locP2 == 0)
-            && locV0 == 0 && locV1 == 0 && locV2 == 0)
-        && (locV0 == 0 && locV2 == 0) /* all processes start with 1 */
-        ->
-        <> (locD1 != 0 || locE1 != 0);
+       <> (locD1 != 0 || locE1 != 0);
 
     univalent22:
-        <>[](  (3 * (sP10 + sP11 + sP12) < 2 * (N - 2) + 3
-                    || locP1 == 0)
-            && (2 * (sP20 + sP21 + sP22 + sP2bot) < (N - 1) + 2 || locP2 == 0)
-            && locV0 == 0 && locV1 == 0 && locV2 == 0)
-        && (locV0 == 0 && locV1 == 0) /* all processes start with 2 */
-        ->
-        <> (locD2 != 0 || locE2 != 0);
+       <> (locD2 != 0 || locE2 != 0);
 
   }
 } /* Proc */

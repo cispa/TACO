@@ -450,7 +450,7 @@ impl InitializedGeneralThresholdAutomatonBuilder {
         if let Some(err) = self.validate_constraint(&rule.guard, &self.ta.variables) {
             return Some(BuilderError::MalformedRule(
                 Box::new(rule.clone()),
-                format!("Guard constraint {} is malformed: {}", &rule.guard, err),
+                format!("Guard constraint {} is malformed: {}", rule.guard, err),
             ));
         }
 

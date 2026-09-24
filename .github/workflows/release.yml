@@ -24,7 +24,7 @@ jobs:
     name: Minimum version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install rust version
         run: rustup install ${MIN_RUST_VERSION}
       - name: Install Dependencies (Z3,CVC5,Graphviz)
@@ -44,7 +44,7 @@ jobs:
       id-token: write # Required for OIDC token exchange
       contents: write # required to create a release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install rust version
         run: rustup install ${MIN_RUST_VERSION}
       - uses: rust-lang/crates-io-auth-action@v1
@@ -73,7 +73,7 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:

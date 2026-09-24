@@ -76,21 +76,9 @@ skel Proc {
     unforg: (loc1 == 0) -> [](locAC == 0);
     
     /* liveness */
-    corr: <>[](((2 * nsntEC < THRESH1) || (loc0 == 0))
-                && ((nsntRD < THRESH2) || (loc0 == 0))
-                && ((2 * nsntEC < THRESH1) || (locEC == 0))
-                && ((nsntRD < THRESH2) || (locEC == 0))
-                && ((nsntRD < THRESH3) || (locRD == 0))
-                && (loc1 == 0))
-        -> ((loc0 == 0) -> <>(locAC != 0));
+    corr: ((loc0 == 0) -> <>(locAC != 0));
 
-    agreement: <>[]((2 * nsntEC < THRESH1 || loc0 == 0)
-                && (nsntRD < THRESH2 || loc0 == 0)
-                && (2 * nsntEC < THRESH1 || locEC == 0)
-                && (nsntRD < THRESH2 || locEC == 0)
-                && (nsntRD < THRESH3 || locRD == 0)
-                && (loc1 == 0))
-        -> []((locAC != 0)
+    agreement: []((locAC != 0)
             -> <>(loc0 == 0 && loc1 == 0 && locEC == 0 && locRD == 0));
   }
 } /* Proc */

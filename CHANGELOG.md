@@ -16,6 +16,10 @@
 - replaced `localhost` reference in `sitemap.xml` and `robots.txt` (#2)
 - fix clippy issues with 1.95 (#8)
 - remove old default timeout that caused timeout for smoke tests not be set (#9)
+- fixed bug in abstract interval extraction (see
+  [Bug Report 0](./docs/bug-analysis/0-interval-rounding.md)) (#10)
+- fixed missing distributivity check (see
+  [Bug Report 1](./docs/bug-analysis/1-distributivity-reach.md)) (#10)
 
 ### Added
 
@@ -23,6 +27,19 @@
 - upgrade CI pipeline & Dockerfile to Rust 1.95 (#8)
 - improved artifact evaluation README (#9)
 - artifact README in CAV format (#9)
+- new `InternalSpec` to prepare support for liveness specifications (#10)
+- `UpwardsClosedSet` with extraction support from `LIAVariableConstraint` to
+  unify interval extraction and specification extraction (#10)
+- implement proper reporting for specifications where the model checker could
+  not determine whether the TA is safe (#10)
+- upgrade base image to Fedora 44 (#10)
+
+### Removed
+
+- `ReachabilitySpec` type in favor of `InternalSpec` to prepare support for
+  liveness specifications (#10)
+- Removed fairness constraints from liveness specifications in
+  `TACO` benchmarks (#10)
 
 ## [v0.1.0]
 

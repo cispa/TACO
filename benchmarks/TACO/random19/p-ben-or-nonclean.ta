@@ -283,39 +283,22 @@ thresholdAutomaton Proc {
         (locV0 == 0) -> [] (locD0 == 0 && locE0 == 0);
 
     round_term:
-        <>[](  (sR0 + sR1 < N - T || locSR == 0)
-            && ((sP0 + sP1 + sPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-            ->
-            <> (locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0);
+        <> (locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0);
 
     decide_or_flip:
-        <>[](  (sR0 + sR1 < N - T || locSR == 0)
-            && ((sP0 + sP1 + sPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-            ->
-            <> (locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0
+        <> (locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0
                     && locD1 == 0 && locE1 == 0
                 || 
                 locV0 == 0 && locV1 == 0 && locSR == 0 && locSP == 0
                     && locD0 == 0 && locE0 == 0);
 
     univalent20:
-        <>[](  (sR0 + sR1 < N - T || locSR == 0)
-            && ((sP0 + sP1 + sPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-        && (locV1 == 0) -> <> (locD0 != 0 || locE0 != 0);
+        <> (locD0 != 0 || locE0 != 0);
     univalent21:
-        <>[](  (sR0 + sR1 < N - T || locSR == 0)
-            && ((sP0 + sP1 + sPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-        && (locV0 == 0) -> <> (locD1 != 0 || locE1 != 0);
+        <> (locD1 != 0 || locE1 != 0);
 
     univalent30:
-        <>[](  (sR0 + sR1 < N - T || locSR == 0)
-            && ((sP0 + sP1 + sPQ < N - T) || locSP == 0)
-            && locV0 == 0 && locV1 == 0)
-        && (locV1 == 0) -> <> (locV0 == 0 && locV1 == 0 && locSR == 0
+        <> (locV0 == 0 && locV1 == 0 && locSR == 0
             && locSP == 0 && locD1 == 0 && locE1 == 0);
 
   }

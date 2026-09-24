@@ -6,13 +6,14 @@ use std::cmp::min;
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
 use taco_display_utils::join_iterator;
+use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
 use taco_threshold_automaton::lia_threshold_automaton::integer_thresholds::IntoNoDivBooleanExpr;
 
 use easy_smt::Response::Sat;
 use std::collections::HashMap;
 use taco_interval_ta::IntervalThresholdAutomaton;
 use taco_interval_ta::interval::Interval;
-use taco_model_checker::reachability_specification::DisjunctionTargetConfig;
+
 use taco_smt_encoder::SMTSolverBuilder;
 use taco_smt_encoder::expression_encoding::DeclaresVariable;
 use taco_smt_encoder::expression_encoding::EncodeToSMT;
@@ -186,10 +187,7 @@ impl<'a> SMTEncoderSteady<'a> {
     /// 3. encode that each steady path fragment is valid
     /// 4. encode error states if the last state of the steady error path is an error state
     /// 5. run smt solver
-    pub fn steady_is_non_spurious(
-        &mut self,
-        spec: Option<&DisjunctionTargetConfig>,
-    ) -> SpuriousResult {
+    pub fn steady_is_non_spurious(&mut self, spec: Option<&UpwardsClosedSet>) -> SpuriousResult {
         // 1. each indexed location, parameter, rule counter is non-negative
         for param_smt in self.ctx.param_to_smt.values() {
             let param_encoding = self
@@ -497,7 +495,7 @@ impl<'a> SMTEncoderSteady<'a> {
     ///
     /// This function works for any disjunction of Coverability, General Coverability and Reachability Specifications,
     /// For every other specification, `smt.false` is returned
-    fn encode_error_states(&self, spec: &DisjunctionTargetConfig) -> SMTExpr {
+    fn encode_error_states(&self, spec: &UpwardsClosedSet) -> SMTExpr {
         // TODO: refactor to not rely on internals
         spec.encode_to_smt_with_ctx(&self.ctx.smt_solver, self.ctx.config_ctxs.last().unwrap())
             .expect("Failed to encode error conditions")
@@ -1379,6 +1377,7 @@ mod tests {
     use taco_interval_ta::builder::IntervalTABuilder;
 
     use taco_interval_ta::IntervalThresholdAutomaton;
+    use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
     use taco_smt_encoder::SMTSolverBuilder;
 
     use taco_threshold_automaton::BooleanVarConstraint;
@@ -1394,7 +1393,6 @@ mod tests {
     use std::collections::HashSet;
     use taco_interval_ta::interval::Interval;
     use taco_interval_ta::interval::IntervalBoundary;
-    use taco_model_checker::reachability_specification::TargetConfig;
     use taco_threshold_automaton::RuleDefinition;
     use taco_threshold_automaton::ThresholdAutomaton;
     use taco_threshold_automaton::expressions::ComparisonOp;
@@ -2437,11 +2435,11 @@ mod tests {
         let path = get_test_steady_error_path_one_step(&aut, &error_graph);
         let mut encoder = get_initialized_test_smt_encoder(&aut, &path);
 
-        let res = encoder.steady_is_non_spurious(Some(
-            &TargetConfig::new_cover(HashSet::from([Location::new("l1"), Location::new("l2")]))
-                .unwrap()
-                .into_disjunct_with_name("cover"),
-        ));
+        let res =
+            encoder.steady_is_non_spurious(Some(&UpwardsClosedSet::new_cover(HashSet::from([
+                Location::new("l1"),
+                Location::new("l2"),
+            ]))));
         assert!(!res.is_non_spurious());
     }
 

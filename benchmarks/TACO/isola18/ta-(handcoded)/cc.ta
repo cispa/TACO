@@ -118,13 +118,6 @@ skel Proc {
     agreement: [](locAC0 == 0 || locAC1 == 0);
     
     termination:
-        ((loc0 > loc1 + T || loc1 > loc0 + T)
-            &&
-        <>[](loc0 == 0 && loc1 == 0
-                && (nsnt00plus01 < N - T || locP0 == 0)
-                && (2 * nsnt10 < N + 1 || locP1 == 0)
-                && (2 * nsnt11 < N + 1 || locP1 == 0))
-        ) ->
         <>(loc0 == 0 && loc1 == 0 && locP0 == 0 && locP1 == 0);
 
   }

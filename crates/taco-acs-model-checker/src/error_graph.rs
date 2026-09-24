@@ -17,7 +17,7 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use log::info;
-use taco_model_checker::{ModelCheckerResult, reachability_specification::DisjunctionTargetConfig};
+use taco_model_checker::{ModelCheckerResult, internal_spec::upwards_closed_set::UpwardsClosedSet};
 use taco_smt_encoder::SMTSolver;
 
 use crate::{
@@ -52,14 +52,14 @@ pub struct ErrorGraph {
     /// Threshold automaton for which the error graph has been constructed
     ta: ACSThresholdAutomaton,
     /// Specification for which the error graph has been constructed
-    spec: DisjunctionTargetConfig,
+    spec: UpwardsClosedSet,
 }
 
 impl ErrorGraph {
     /// Compute the error graph of the given specification
     ///
     /// Constructing the error graph can be a time and memory heavy operation.
-    pub fn compute_error_graph(spec: DisjunctionTargetConfig, ta: ACSThresholdAutomaton) -> Self {
+    pub fn compute_error_graph(spec: UpwardsClosedSet, ta: ACSThresholdAutomaton) -> Self {
         // explore the error path
         let explored_cfgs = Self::construct_full_error_graph(&spec, &ta);
 
@@ -80,7 +80,7 @@ impl ErrorGraph {
 
         info!(
             "Finished error graph construction for property '{}'. Explored {len_before_init} configurations of which {} are initial and have to be checked for spuriousness (max. error level {max_error_level})",
-            spec.name(),
+            spec,
             initial_leafs.len(),
         );
 
@@ -94,7 +94,7 @@ impl ErrorGraph {
     /// Compute the full error graph for the [`ACSThresholdAutomaton`] and the
     /// given [`DisjunctionTargetConfig`]
     fn construct_full_error_graph(
-        spec: &DisjunctionTargetConfig,
+        spec: &UpwardsClosedSet,
         ta: &ACSThresholdAutomaton,
     ) -> PartiallyOrderedConfigMap<NodeRef> {
         let mut explored_cfgs = ErrorGraphNode::new_roots_from_spec(spec, ta);
@@ -133,7 +133,8 @@ mod tests {
 
     use taco_interval_ta::IntervalThresholdAutomaton;
     use taco_model_checker::{
-        SpecificationTrait, TATrait, reachability_specification::ReachabilityProperty,
+        SpecificationTrait, TATrait,
+        internal_spec::{ErrorSpec, ErrorTarget},
     };
     use taco_parser::{ParseTAWithLTL, bymc::ByMCParser};
     use taco_smt_encoder::SMTSolverBuilder;
@@ -190,18 +191,22 @@ mod tests {
         let (ta, spec) = ByMCParser::new().parse_ta_and_spec(test_spec).unwrap();
         let ctx = SMTSolverBuilder::default();
 
-        let spec = ReachabilityProperty::try_from_eltl(spec.into_iter(), &ctx).unwrap();
+        let (spec, _) = ErrorSpec::try_from_eltl(spec.into_iter(), &ctx).unwrap();
 
-        let spec_ta = ReachabilityProperty::transform_threshold_automaton(ta, spec, &ctx);
+        let spec_ta = ErrorSpec::transform_threshold_automaton(ta, spec, &ctx);
 
         assert_eq!(spec_ta.len(), 1);
-        let (spec, ta) = spec_ta.into_iter().next().unwrap();
+        let (_, spec, ta) = spec_ta.into_iter().next().unwrap();
 
         let mut ta = IntervalThresholdAutomaton::try_from_general_ta(ta, &ctx, &spec)
             .expect("Failed to create interval ta");
         assert_eq!(ta.len(), 1, "Expected one interval automaton to be parsed");
 
         let ta = ACSThresholdAutomaton::from(ta.pop().unwrap());
+
+        let ErrorTarget::Reach(spec) = spec else {
+            panic!("Test case failed");
+        };
 
         let e_graph = ErrorGraph::compute_error_graph(spec, ta);
 
@@ -268,18 +273,22 @@ mod tests {
         let (ta, spec) = ByMCParser::new().parse_ta_and_spec(test_spec).unwrap();
         let ctx = SMTSolverBuilder::default();
 
-        let spec = ReachabilityProperty::try_from_eltl(spec.into_iter(), &ctx).unwrap();
+        let (spec, _) = ErrorSpec::try_from_eltl(spec.into_iter(), &ctx).unwrap();
 
-        let spec_ta = ReachabilityProperty::transform_threshold_automaton(ta, spec, &ctx);
+        let spec_ta = ErrorSpec::transform_threshold_automaton(ta, spec, &ctx);
 
         assert_eq!(spec_ta.len(), 1);
-        let (spec, ta) = spec_ta.into_iter().next().unwrap();
+        let (_, spec, ta) = spec_ta.into_iter().next().unwrap();
 
         let mut ta = IntervalThresholdAutomaton::try_from_general_ta(ta, &ctx, &spec)
             .expect("Failed to create interval ta");
         assert_eq!(ta.len(), 1, "Expected one interval automaton to be parsed");
 
         let ta = ACSThresholdAutomaton::from(ta.pop().unwrap());
+
+        let ErrorTarget::Reach(spec) = spec else {
+            panic!("Test case failed");
+        };
 
         let e_graph = ErrorGraph::compute_error_graph(spec, ta.clone());
 

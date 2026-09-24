@@ -428,6 +428,14 @@ impl StaticSMTContext {
         self.solver.true_()
     }
 
+    /// Declare a fresh variable
+    pub fn declare_new_int(&mut self, name: &str) -> Result<SMTExpr, SMTSolverError> {
+        let int_sort = self.solver.int_sort();
+        self.solver
+            .declare_const(name, int_sort)
+            .map_err(|e| e.into())
+    }
+
     /// Encode the given expression into an SMT expression and return the
     /// expression
     pub fn encode_to_smt<T>(&self, expr: &T) -> Result<SMTExpr, SMTSolverError>

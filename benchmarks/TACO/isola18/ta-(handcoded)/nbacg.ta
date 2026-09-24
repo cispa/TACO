@@ -112,14 +112,6 @@ skel Proc {
         (locNO == 0 && locNOFD == 0 && locYESFD == 0) -> [](locABR == 0);
     
     termination:
-        (<>[](locNO == 0 && locNOFD == 0 && locYES == 0 && locYESFD == 0
-                && (nsntNoCF < 1 || locSE == 0)
-                && (nsntYesCF < N || nsntNoCF >= 1 || locSE == 0))
-            &&
-        (locNOFD == 0 && locYESFD == 0)
-            &&
-        [](locCR == 0))
-            ->
         <>(locNO == 0 && locNOFD == 0 && locYES == 0 && locYESFD == 0 && locCR == 0);
   }
 } /* Proc */

@@ -4,11 +4,15 @@
 mod test_reset_benchmarks {
     use std::fs;
 
+    use log::warn;
     use taco_acs_model_checker::{
         acs_threshold_automaton::ACSThresholdAutomaton, error_graph::ErrorGraph,
     };
     use taco_interval_ta::builder::IntervalTABuilder;
-    use taco_model_checker::{TargetSpec, reachability_specification::ReachabilityProperty};
+    use taco_model_checker::{
+        TASpecification,
+        internal_spec::{ErrorSpec, ErrorTarget},
+    };
     use taco_parser::{ParseTAWithLTL, bymc::ByMCParser};
     use taco_smt_encoder::SMTSolverBuilder;
     use taco_threshold_automaton::lia_threshold_automaton::LIAThresholdAutomaton;
@@ -29,7 +33,7 @@ mod test_reset_benchmarks {
         let parsed_spec = ltl
             .expressions()
             .iter()
-            .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+            .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
             .collect::<Vec<_>>();
 
         let ta_spec = parsed_spec
@@ -49,15 +53,17 @@ mod test_reset_benchmarks {
                 let interval_tas = IntervalTABuilder::new(
                     lia_ta,
                     SMTSolverBuilder::default(),
-                    spec.get_variable_constraint()
-                        .into_iter()
-                        .cloned()
-                        .collect(),
+                    spec.var_constraint().into_iter().cloned().collect(),
                 )
                 .build()
                 .unwrap();
                 for ta in interval_tas {
                     let cs_ta = ACSThresholdAutomaton::new(ta);
+
+                    let ErrorTarget::Reach(spec) = &spec else {
+                        warn!("Skipping Liveness");
+                        continue;
+                    };
 
                     let error_graph = ErrorGraph::compute_error_graph(spec.clone(), cs_ta);
                     let res = error_graph.check_for_non_spurious_counter_example(
@@ -84,7 +90,7 @@ mod test_reset_benchmarks {
         let parsed_spec = ltl
             .expressions()
             .iter()
-            .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+            .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
             .collect::<Vec<_>>();
 
         let ta_spec = parsed_spec
@@ -104,15 +110,17 @@ mod test_reset_benchmarks {
                 let interval_tas = IntervalTABuilder::new(
                     lia_ta,
                     SMTSolverBuilder::default(),
-                    spec.get_variable_constraint()
-                        .into_iter()
-                        .cloned()
-                        .collect(),
+                    spec.var_constraint().into_iter().cloned().collect(),
                 )
                 .build()
                 .unwrap();
                 for ta in interval_tas {
                     let cs_ta = ACSThresholdAutomaton::new(ta);
+
+                    let ErrorTarget::Reach(spec) = &spec else {
+                        warn!("Skipping Liveness");
+                        continue;
+                    };
 
                     let error_graph = ErrorGraph::compute_error_graph(spec.clone(), cs_ta);
                     let res = error_graph.check_for_non_spurious_counter_example(

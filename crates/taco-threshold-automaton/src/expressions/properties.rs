@@ -4,7 +4,7 @@
 use core::fmt;
 use std::{collections::HashMap, error, ops};
 
-use crate::expressions::{IntegerExpression, Location, Variable};
+use crate::expressions::{And, IntegerExpression, Location, Or, Variable};
 
 use super::{Atomic, ComparisonOp, Parameter};
 use super::{BooleanConnective, BooleanExpression, IntegerOp};
@@ -705,6 +705,15 @@ where
     }
 }
 
+impl<T: Atomic> And for BooleanExpression<T> {
+    fn and(self, other: Self) -> Self {
+        BooleanExpression::BinaryExpression(
+            Box::new(self),
+            super::BooleanConnective::And,
+            Box::new(other),
+        )
+    }
+}
 impl<T> ops::BitAnd for BooleanExpression<T>
 where
     T: Atomic,
@@ -713,9 +722,15 @@ where
 
     // Overload the `&` operator to represent the logical AND operation
     fn bitand(self, other: BooleanExpression<T>) -> BooleanExpression<T> {
+        self.and(other)
+    }
+}
+
+impl<T: Atomic> Or for BooleanExpression<T> {
+    fn or(self, other: Self) -> Self {
         BooleanExpression::BinaryExpression(
             Box::new(self),
-            super::BooleanConnective::And,
+            super::BooleanConnective::Or,
             Box::new(other),
         )
     }
@@ -729,11 +744,7 @@ where
 
     // Overload the `|` operator to represent the logical OR operation
     fn bitor(self, other: BooleanExpression<T>) -> BooleanExpression<T> {
-        BooleanExpression::BinaryExpression(
-            Box::new(self),
-            super::BooleanConnective::Or,
-            Box::new(other),
-        )
+        self.or(other)
     }
 }
 

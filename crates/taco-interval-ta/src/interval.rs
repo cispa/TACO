@@ -6,6 +6,8 @@
 use std::fmt::Debug;
 use std::fmt::{self};
 
+use taco_smt_encoder::SMTSolverContext;
+use taco_smt_encoder::expression_encoding::StaticSMTContext;
 use taco_threshold_automaton::expressions::{
     Atomic, BooleanConnective, BooleanExpression, ComparisonOp, Parameter, fraction::Fraction,
 };
@@ -240,6 +242,52 @@ impl Interval {
         (self.lb == *ib && !self.lb_open) || (self.ub == *ib && !self.ub_open)
     }
 
+    /// Check whether the interval is inhabited for the current order
+    ///
+    /// This function will check that there is at least one integer solution
+    /// lies within the interval borders. This function will only work for
+    /// integers
+    pub(crate) fn is_inhabited(&self, ctx: &mut StaticSMTContext) -> bool {
+        // This function depends on the fact that if lb != ub, then lb < ib in
+        // the interval ordering.
+        // Specifically, this means that there exists an r > 0 such that
+        // lb + r = ub (by definition of < on for *integers*)
+        //
+        // Assuming both interval borders are open, we can check this by
+        // checking whether ub - lb > 1 is satisfiable (since if this not
+        // possible) there is no solution
+        if let (IntervalBoundary::Bound(lb), IntervalBoundary::Bound(ub)) =
+            (self.lb.clone(), self.ub.clone())
+        {
+            ctx.get_smt_solver_mut()
+                .push()
+                .expect("Failed to check inhabitance of interval");
+            let comp_thr = ub - lb;
+            let one = Threshold::from_const(1);
+
+            let inh_query: BooleanExpression<Parameter> =
+                comp_thr.encode_comparison_to_boolean_expression(ComparisonOp::Gt, &one);
+
+            let inh_query = ctx
+                .encode_to_smt(&inh_query)
+                .expect("Failed to check inhabitance of interval");
+
+            let inh = ctx
+                .assert_and_check_expr(inh_query)
+                .expect("Failed to check inhabitance of interval")
+                .is_sat();
+
+            ctx.get_smt_solver_mut()
+                .pop()
+                .expect("Failed to check inhabitance of interval");
+            return inh;
+        }
+
+        // If the interval has a closed side, there will always be an integer
+        // in it (assuming the bounds have an integer solution)
+        true
+    }
+
     /// Checks whether an addition of `c` to the interval must always leave the
     /// interval
     ///
@@ -260,7 +308,7 @@ impl Interval {
         false
     }
 
-    /// Checks whether an addition of `c` from the interval must always leave
+    /// Checks whether an subtraction of `c` from the interval must always leave
     /// the interval
     ///
     /// This function will first check whether both intervals are constants, if
@@ -269,7 +317,15 @@ impl Interval {
     /// If both are constant, it will check whether subtracting `c` from the
     /// upper bound will be sufficient to move below the lower bound.
     pub fn check_sub_always_out_of_interval(&self, c: u32) -> bool {
-        self.check_add_always_out_of_interval(c)
+        if let (Some(lc), Some(uc)) = (self.lb.try_is_constant(), self.ub.try_is_constant()) {
+            let res = uc - c.into();
+            if self.ub_open || self.lb_open {
+                return res <= lc;
+            }
+
+            return res < lc;
+        }
+        false
     }
 
     /// Encode the interval as a boolean expression on a variable
@@ -404,6 +460,7 @@ impl fmt::Display for IntervalBoundary {
 #[cfg(test)]
 mod tests {
 
+    use taco_smt_encoder::{SMTSolverBuilder, expression_encoding::StaticSMTContext};
     use taco_threshold_automaton::{
         expressions::{
             BooleanExpression, ComparisonOp, IntegerExpression, Parameter, Variable,
@@ -752,5 +809,85 @@ mod tests {
         );
 
         assert!(interval.check_is_contained(&ib));
+    }
+
+    #[test]
+    fn test_is_inhabited() {
+        // Context without parameters for constant bounds
+        let mut ctx = StaticSMTContext::new(SMTSolverBuilder::default(), [], [], [])
+            .expect("Failed to create SMT context");
+
+        // Unbounded interval with a closed side is always inhabited
+        let interval = Interval::new(
+            IntervalBoundary::from_const(0),
+            false,
+            IntervalBoundary::new_infty(),
+            true,
+        );
+        assert!(interval.is_inhabited(&mut ctx));
+
+        // Unbounded interval with an open side is always inhabited
+        let interval = Interval::new(
+            IntervalBoundary::from_const(0),
+            true,
+            IntervalBoundary::new_infty(),
+            true,
+        );
+        assert!(interval.is_inhabited(&mut ctx));
+
+        // Open interval with more than one integer between the borders
+        let interval = Interval::new(
+            IntervalBoundary::from_const(0),
+            true,
+            IntervalBoundary::from_const(2),
+            true,
+        );
+        assert!(interval.is_inhabited(&mut ctx));
+
+        // Open interval without an integer between the borders
+        let interval = Interval::new(
+            IntervalBoundary::from_const(0),
+            true,
+            IntervalBoundary::from_const(1),
+            true,
+        );
+        assert!(!interval.is_inhabited(&mut ctx));
+
+        // Empty open interval
+        let interval = Interval::new(
+            IntervalBoundary::from_const(1),
+            true,
+            IntervalBoundary::from_const(1),
+            true,
+        );
+        assert!(!interval.is_inhabited(&mut ctx));
+    }
+
+    #[test]
+    fn test_is_inhabited_with_parameters() {
+        let n = Parameter::new("n");
+        let mut ctx = StaticSMTContext::new(SMTSolverBuilder::default(), [n.clone()], [], [])
+            .expect("Failed to create SMT context");
+
+        let ub = IntervalBoundary::new_bound(WeightedSum::new([(n.clone(), 1)]), 1);
+
+        // ]n, n + 1[ does not contain an integer
+        let interval = Interval::new(
+            IntervalBoundary::new_bound(WeightedSum::new([(n.clone(), 1)]), 0),
+            true,
+            ub.clone(),
+            true,
+        );
+        assert!(!interval.is_inhabited(&mut ctx));
+
+        // ]n, n + 2[ contains the integer n + 1
+        let ub = IntervalBoundary::new_bound(WeightedSum::new([(n.clone(), 1)]), 2);
+        let interval = Interval::new(
+            IntervalBoundary::new_bound(WeightedSum::new([(n, 1)]), 0),
+            true,
+            ub,
+            true,
+        );
+        assert!(interval.is_inhabited(&mut ctx));
     }
 }

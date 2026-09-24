@@ -81,14 +81,10 @@ skel Proc {
     
     /* the following two liveness properties require fairness constraints */
     corr:
-        <>[](((nsnt < THRESH2) || loc0 == 0)
-            && ((nsnt < THRESH1) || loc1 == 0))
-        -> ((loc0 == 0) -> <>(locAC != 0));
+        ((loc0 == 0) -> <>(locAC != 0));
 
     relay:
-        <>[](((nsnt < THRESH2) || loc0 == 0)
-            && ((nsnt < THRESH1) || loc1 == 0))
-        -> []((locAC != 0) -> <>((loc0 == 0) && (loc1 == 0)));
+       []((locAC != 0) -> <>((loc0 == 0) && (loc1 == 0)));
   }
 } /* Proc */
 

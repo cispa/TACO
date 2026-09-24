@@ -18,9 +18,14 @@
 //!
 //! This algorithm is currently very expensive: We explicitly generate all
 //! permutations and check each of them with the SMT solver.
+//!
+//! Afterwards
 
 use core::fmt;
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use taco_display_utils::join_iterator;
 use taco_smt_encoder::{
@@ -51,6 +56,13 @@ use super::{Interval, IntervalBoundary, StaticIntervalOrder};
 pub struct SimpleOrderGeneratorContext {
     /// SMT solver context
     solver: StaticSMTContext,
+    /// Store which interval boundaries for which need to have an interval of
+    /// the form [ib, ib] ]ib,..[
+    ///
+    /// This happens when a threshold contains a <=; or >, constraint
+    need_exact: HashMap<Variable, HashSet<IntervalBoundary>>,
+    /// Same as `need_exact` but for sums of variables
+    need_exact_multi: HashMap<WeightedSum<Variable>, HashSet<IntervalBoundary>>,
     /// Currently known incomplete orders
     incomplete_orders: Vec<IncompleteOrder>,
 }
@@ -87,6 +99,8 @@ impl SimpleOrderGeneratorContext {
         Self {
             solver: ctx,
             incomplete_orders: vec![IncompleteOrder::new()],
+            need_exact: HashMap::new(),
+            need_exact_multi: HashMap::new(),
         }
     }
 
@@ -95,12 +109,20 @@ impl SimpleOrderGeneratorContext {
         mut self,
         var: &Variable,
         ib: &IntervalBoundary,
+        needs_exact: bool,
     ) -> SimpleOrderGeneratorContext {
         self.incomplete_orders = self
             .incomplete_orders
             .into_iter()
             .flat_map(|order| order.extend(var, ib, &mut self.solver))
             .collect();
+
+        if needs_exact {
+            self.need_exact
+                .entry(var.clone())
+                .or_default()
+                .insert(ib.clone());
+        }
 
         self
     }
@@ -110,12 +132,21 @@ impl SimpleOrderGeneratorContext {
         mut self,
         var: &WeightedSum<Variable>,
         ib: &IntervalBoundary,
+        needs_exact: bool,
     ) -> SimpleOrderGeneratorContext {
         self.incomplete_orders = self
             .incomplete_orders
             .into_iter()
             .flat_map(|order| order.extend(var, ib, &mut self.solver))
             .collect();
+
+        if needs_exact {
+            self.need_exact_multi
+                .entry(var.clone())
+                .or_default()
+                .insert(ib.clone());
+        }
+
         self
     }
 
@@ -126,7 +157,14 @@ impl SimpleOrderGeneratorContext {
     pub fn build_orders(mut self, vars: &[Variable]) -> Vec<StaticIntervalOrder> {
         self.incomplete_orders
             .into_iter()
-            .map(|order| order.complete(&mut self.solver, vars.iter()))
+            .map(|order| {
+                order.complete(
+                    &mut self.solver,
+                    vars.iter(),
+                    &self.need_exact,
+                    &self.need_exact_multi,
+                )
+            })
             .collect()
     }
 }
@@ -163,6 +201,8 @@ impl IncompleteOrder {
         mut self,
         ctx: &mut StaticSMTContext,
         vars: impl Iterator<Item = &'a Variable>,
+        exact_interval_required: &HashMap<Variable, HashSet<IntervalBoundary>>,
+        exact_interval_required_multi: &HashMap<WeightedSum<Variable>, HashSet<IntervalBoundary>>,
     ) -> StaticIntervalOrder {
         debug_assert!(
             self.check_satisfiable(ctx),
@@ -181,29 +221,46 @@ impl IncompleteOrder {
             }
         });
 
+        // Boundaries that were merged with an equal boundary no longer appear
+        // in the order under their own name, so the exact interval must be
+        // created for the boundary that replaced them
+        let replaced_by: HashMap<&IntervalBoundary, &IntervalBoundary> = self
+            .equal_boundaries
+            .iter()
+            .flat_map(|(known, replaced)| {
+                replaced.iter().map(move |r| (r.as_ref(), known.as_ref()))
+            })
+            .collect();
+        let resolve_exact = |ibs: Option<&HashSet<IntervalBoundary>>| -> HashSet<IntervalBoundary> {
+            ibs.into_iter()
+                .flatten()
+                .map(|ib| (*replaced_by.get(ib).unwrap_or(&ib)).clone())
+                .collect()
+        };
+
         let single_var_ib = self
             .single_variable_order
-            .into_iter()
+            .iter()
             .map(|(var, intervals)| {
-                (
-                    var,
-                    Self::interval_boundaries_to_intervals(
-                        intervals.into_iter().map(|i| i.as_ref().clone()),
-                    ),
-                )
+                let ibs = Self::interval_boundaries_to_intervals(
+                    intervals.iter().map(|i| i.as_ref().clone()),
+                    &resolve_exact(exact_interval_required.get(var)),
+                    ctx,
+                );
+                (var.clone(), ibs)
             })
             .collect();
 
         let multi_var_ib = self
             .multi_variable_order
-            .into_iter()
+            .iter()
             .map(|(var, intervals)| {
-                (
-                    var,
-                    Self::interval_boundaries_to_intervals(
-                        intervals.into_iter().map(|i| i.as_ref().clone()),
-                    ),
-                )
+                let ibs = Self::interval_boundaries_to_intervals(
+                    intervals.iter().map(|i| i.as_ref().clone()),
+                    &resolve_exact(exact_interval_required_multi.get(var)),
+                    ctx,
+                );
+                (var.clone(), ibs)
             })
             .collect();
 
@@ -232,23 +289,57 @@ impl IncompleteOrder {
     /// Transform an iterator over interval boundaries into a vector of intervals
     fn interval_boundaries_to_intervals(
         mut it: impl Iterator<Item = IntervalBoundary>,
+        needs_exact_interval: &HashSet<IntervalBoundary>,
+        ctx: &mut StaticSMTContext,
     ) -> Vec<Interval> {
         let previous_border = it.next();
         if previous_border.is_none() {
             return Vec::new();
         }
-
-        let mut previous_border = previous_border.unwrap();
         let mut intervals = Vec::new();
+        let mut previous_border = previous_border.unwrap();
+        let mut last_requires_exact = false;
+
+        if needs_exact_interval.contains(&previous_border) {
+            last_requires_exact = true;
+            intervals.push(Interval::new(
+                previous_border.clone(),
+                false,
+                previous_border.clone(),
+                false,
+            ));
+        }
 
         for border in it {
-            intervals.push(Interval::new(previous_border, false, border.clone(), true));
+            let mut interval = Interval::new(
+                previous_border.clone(),
+                last_requires_exact,
+                border.clone(),
+                true,
+            );
+
+            // The creation of the last exact interval lead to an empty interval
+            if last_requires_exact && !interval.is_inhabited(ctx) {
+                // remove the added exact interval
+                intervals.pop();
+                // instead add the closed border
+                interval = Interval::new(previous_border, false, border.clone(), true);
+            }
+            intervals.push(interval);
+
+            last_requires_exact = false;
+
+            if needs_exact_interval.contains(&border) {
+                intervals.push(Interval::new(border.clone(), false, border.clone(), false));
+                last_requires_exact = true;
+            }
+
             previous_border = border;
         }
 
         intervals.push(Interval::new(
             previous_border,
-            false,
+            last_requires_exact,
             IntervalBoundary::new_infty(),
             true,
         ));
@@ -897,6 +988,8 @@ mod tests {
         let order_generator = SimpleOrderGeneratorContext {
             solver: ctx,
             incomplete_orders: vec![partial_order],
+            need_exact: HashMap::new(),
+            need_exact_multi: HashMap::new(),
         };
 
         let order = order_generator.build_orders(&[Variable::new("x"), Variable::new("y")]);
@@ -1000,8 +1093,11 @@ mod tests {
             0,
         );
 
-        let order_generator = order_generator
-            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib);
+        let order_generator = order_generator.extend_order_with_interval_for_single_variable(
+            &Variable::new("x"),
+            &ib,
+            false,
+        );
 
         let orders = order_generator.build_orders(&Vec::new());
 
@@ -1036,6 +1132,67 @@ mod tests {
 
         assert_eq!(orders.len(), 1);
         assert_eq!(orders[0], expected_static_order);
+    }
+
+    #[test]
+    fn test_exact_interval_kept_when_boundary_merged() {
+        let builder = SMTSolverBuilder::default();
+
+        // n > 3, f > 1: f can be smaller, equal or greater than n
+        let rc = [
+            BooleanExpression::ComparisonExpression(
+                Box::new(IntegerExpression::Param(Parameter::new("n"))),
+                ComparisonOp::Gt,
+                Box::new(IntegerExpression::Const(3)),
+            ),
+            BooleanExpression::ComparisonExpression(
+                Box::new(IntegerExpression::Param(Parameter::new("f"))),
+                ComparisonOp::Gt,
+                Box::new(IntegerExpression::Const(1)),
+            ),
+        ];
+
+        let ta = GeneralThresholdAutomatonBuilder::new("test_ta")
+            .with_locations(vec![Location::new("l1"), Location::new("l2")])
+            .unwrap()
+            .with_parameters(vec![Parameter::new("n"), Parameter::new("f")])
+            .unwrap()
+            .initialize()
+            .with_resilience_conditions(rc)
+            .unwrap()
+            .build();
+
+        let ib_n = IntervalBoundary::new_bound(
+            WeightedSum::new([(Parameter::new("n"), Fraction::from(1))]),
+            0,
+        );
+        let ib_f = IntervalBoundary::new_bound(
+            WeightedSum::new([(Parameter::new("f"), Fraction::from(1))]),
+            0,
+        );
+
+        // `x >= n` and `x > f`, so `f` requires the exact interval [f, f]
+        let orders = SimpleOrderGeneratorContext::new(&ta, builder)
+            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib_n, false)
+            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib_f, true)
+            .build_orders(&Vec::new());
+
+        assert_eq!(orders.len(), 3);
+        assert!(
+            orders
+                .iter()
+                .any(|o| o.equal_boundaries.get(&ib_f) == Some(&ib_n))
+        );
+
+        for order in orders {
+            // if `f` was merged with `n`, the exact interval must be `[n, n]`
+            let b = order.equal_boundaries.get(&ib_f).unwrap_or(&ib_f).clone();
+            let exact = Interval::new(b.clone(), false, b, false);
+            assert!(
+                order.single_var_order[&Variable::new("x")].contains(&exact),
+                "Missing exact interval {exact} in order {order}"
+            );
+        }
     }
 
     #[test]
@@ -1099,6 +1256,8 @@ mod tests {
         let order_generator = SimpleOrderGeneratorContext {
             solver: ctx,
             incomplete_orders: vec![partial_order],
+            need_exact: HashMap::new(),
+            need_exact_multi: HashMap::new(),
         };
 
         let ib = IntervalBoundary::new_bound(
@@ -1107,7 +1266,7 @@ mod tests {
         );
 
         let orders = order_generator
-            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib)
+            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib, false)
             .build_orders(&Vec::new());
 
         let expected_static_order = StaticIntervalOrder {
@@ -1220,6 +1379,8 @@ mod tests {
         let order_generator = SimpleOrderGeneratorContext {
             solver: ctx,
             incomplete_orders: vec![partial_order],
+            need_exact: HashMap::new(),
+            need_exact_multi: HashMap::new(),
         };
 
         let ib = IntervalBoundary::new_bound(
@@ -1228,7 +1389,7 @@ mod tests {
         );
 
         let orders = order_generator
-            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib)
+            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib, false)
             .build_orders(&Vec::new());
 
         let expected_static_order = StaticIntervalOrder {
@@ -1312,6 +1473,7 @@ mod tests {
                     WeightedSum::new([(Parameter::new("n"), Fraction::from(1))]),
                     0,
                 ),
+                false,
             )
             .extend_order_with_interval_for_single_variable(
                 &Variable::new("x"),
@@ -1319,6 +1481,7 @@ mod tests {
                     WeightedSum::new([(Parameter::new("n"), Fraction::from(1))]),
                     0,
                 ),
+                false,
             );
 
         let ib = IntervalBoundary::new_bound(
@@ -1327,7 +1490,7 @@ mod tests {
         );
 
         let orders = order_generator
-            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib)
+            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib, false)
             .build_orders(&Vec::new());
 
         let expected_static_order = StaticIntervalOrder {
@@ -1415,6 +1578,7 @@ mod tests {
                     WeightedSum::new([(Parameter::new("n"), Fraction::from(1))]),
                     0,
                 ),
+                false,
             )
             .extend_order_with_interval_for_single_variable(
                 &Variable::new("x"),
@@ -1422,6 +1586,7 @@ mod tests {
                     WeightedSum::new([(Parameter::new("n"), Fraction::from(1))]),
                     2,
                 ),
+                false,
             );
 
         // f + 1
@@ -1431,7 +1596,7 @@ mod tests {
         ));
 
         let orders = order_generator
-            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib)
+            .extend_order_with_interval_for_single_variable(&Variable::new("x"), &ib, false)
             .build_orders(&Vec::new());
 
         assert_eq!(orders.len(), 6);

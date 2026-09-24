@@ -3,7 +3,7 @@
 //! Every model checker needs to implement the [`ModelChecker`] trait.
 
 use core::fmt;
-use std::{error, fmt::Display};
+use std::{convert::Infallible, error, fmt::Display};
 
 use eltl::ELTLExpression;
 use log::trace;
@@ -24,8 +24,46 @@ use taco_threshold_automaton::{
 use crate::preprocessing::Preprocessor;
 
 pub mod eltl;
+pub mod internal_spec;
 pub mod preprocessing;
-pub mod reachability_specification;
+
+/// The context type used by the model checker `M`
+pub type ContextOf<M> = <M as ModelChecker>::ModelCheckerContext;
+
+/// The internal specification type the model checker `M` works on
+pub type InternalSpecOf<M> =
+    <<M as ModelChecker>::SpecType as SpecificationTrait<ContextOf<M>>>::InternalSpecType;
+
+/// Error that can occur while transforming a general threshold automaton into
+/// the internal representation of the model checker `M`
+pub type TAErrorOf<M> = <<M as ModelChecker>::ThresholdAutomatonType as TATrait<
+    ContextOf<M>,
+    InternalSpecOf<M>,
+>>::TransformationError;
+
+/// Error that can occur while transforming an ELTL specification into the
+/// internal specification of the model checker `M`
+pub type SpecErrorOf<M> =
+    <<M as ModelChecker>::SpecType as SpecificationTrait<ContextOf<M>>>::TransformationError;
+
+/// Error that can occur while creating the context of the model checker `M`
+pub type ContextErrorOf<M> = <ContextOf<M> as ModelCheckerContext>::CreationError;
+
+/// Options accepted by the context of the model checker `M`
+pub type ContextOptionsOf<M> = <ContextOf<M> as ModelCheckerContext>::ContextOptions;
+
+/// Preprocessor that can be applied before the threshold automaton is
+/// transformed into the internal representation of the model checker `M`
+pub type PreprocessorOf<M> =
+    Box<dyn Preprocessor<GeneralThresholdAutomaton, InternalSpecOf<M>, ContextOf<M>>>;
+
+/// A specification paired with all threshold automata that need to be checked
+/// to verify it, and the name of the property it was derived from
+pub type TASpecOf<M> = Vec<(
+    String,
+    InternalSpecOf<M>,
+    Vec<<M as ModelChecker>::ThresholdAutomatonType>,
+)>;
 
 /// The [`ModelChecker`] trait defines the interface for all model checkers in
 /// TACO.
@@ -41,10 +79,7 @@ pub trait ModelChecker: Sized {
     type SpecType: SpecificationTrait<Self::ModelCheckerContext>;
     /// Internal representation of a threshold automaton the model checker works
     /// on
-    type ThresholdAutomatonType: TATrait<
-            Self::ModelCheckerContext,
-            <Self::SpecType as SpecificationTrait<Self::ModelCheckerContext>>::InternalSpecType,
-        >;
+    type ThresholdAutomatonType: TATrait<ContextOf<Self>, InternalSpecOf<Self>>;
 
     /// Error type for errors that can occur during initialization of the model
     /// checker
@@ -59,17 +94,14 @@ pub trait ModelChecker: Sized {
     /// setup the model checker with the appropriate options, system and
     /// specification representation, as well as the context containing backend
     /// functionality like SMT solver configurations.
-    #[allow(clippy::type_complexity)]
+    ///
+    /// `unknown` contains the names of properties that could not be
+    /// translated into the internal specification. They must be reported as
+    /// unknown by the model checker.
     fn initialize(
         opts: Self::ModelCheckerOptions,
-        ta_spec: Vec<
-            (
-                <<Self as ModelChecker>::SpecType as SpecificationTrait<
-                    Self::ModelCheckerContext,
-                >>::InternalSpecType,
-                Vec<Self::ThresholdAutomatonType>,
-            ),
-        >,
+        ta_spec: TASpecOf<Self>,
+        unknown: Vec<String>,
         ctx: Self::ModelCheckerContext,
     ) -> Result<Self, Self::InitializationError>;
 
@@ -87,28 +119,13 @@ pub trait ModelChecker: Sized {
     /// If the function returns an `Ok`, the model checker has been initialized
     /// with the threshold automaton and specification and is ready to be
     /// checked.
-    #[allow(clippy::type_complexity)]
     fn new(
-        ctx_opts: Option<
-            <<Self as ModelChecker>::ModelCheckerContext as ModelCheckerContext>::ContextOptions,
-        >,
+        ctx_opts: Option<ContextOptionsOf<Self>>,
         mc_opts: Self::ModelCheckerOptions,
-        preprocessors: Vec<Box<dyn Preprocessor<GeneralThresholdAutomaton, <Self::SpecType as SpecificationTrait<Self::ModelCheckerContext>>::InternalSpecType, Self::ModelCheckerContext>>>,
+        preprocessors: Vec<PreprocessorOf<Self>>,
         ta: GeneralThresholdAutomaton,
         spec: impl Iterator<Item = (String, ELTLExpression)>,
-    ) -> Result<
-        Self,
-        ModelCheckerSetupError<
-            <<Self as ModelChecker>::ThresholdAutomatonType as TATrait<
-                Self::ModelCheckerContext, <Self::SpecType as SpecificationTrait<Self::ModelCheckerContext>>::InternalSpecType,
-            >>::TransformationError,
-            <<Self as ModelChecker>::SpecType as SpecificationTrait<
-                Self::ModelCheckerContext,
-            >>::TransformationError,
-            <<Self as ModelChecker>::ModelCheckerContext as ModelCheckerContext>::CreationError,
-            Self::InitializationError,
-        >,
-    >{
+    ) -> Result<Self, ModelCheckerSetupError<Self>> {
         let ctx = Self::ModelCheckerContext::try_new(ctx_opts);
         if let Err(ctx_err) = ctx {
             return Err(ModelCheckerSetupError::ErrorContextSetup(ctx_err));
@@ -119,14 +136,14 @@ pub trait ModelChecker: Sized {
         if let Err(spec_err) = spec {
             return Err(ModelCheckerSetupError::ErrorTransformingSpec(spec_err));
         }
-        let spec = spec.unwrap();
+        let (spec, unknown) = spec.unwrap();
 
         // Combine the specification with the threshold automaton
         let ta_spec = Self::SpecType::transform_threshold_automaton(ta, spec, &ctx);
 
         let ta_spec = ta_spec
             .into_iter()
-            .map(|(spec, mut ta)| {
+            .map(|(name, spec, mut ta)| {
                 // Preprocessing on tas with information from the specification
                 for processor in preprocessors.iter() {
                     processor.process(&mut ta, &spec, &ctx);
@@ -136,7 +153,7 @@ pub trait ModelChecker: Sized {
 
                 let ta = Self::ThresholdAutomatonType::try_from_general_ta(ta, &ctx, &spec)?;
 
-                Ok((spec, ta))
+                Ok((name, spec, ta))
             })
             .collect::<Result<Vec<_>, _>>();
         if let Err(ta_err) = ta_spec {
@@ -144,7 +161,7 @@ pub trait ModelChecker: Sized {
         }
         let ta_spec = ta_spec.unwrap();
 
-        let mc = Self::initialize(mc_opts, ta_spec, ctx.clone());
+        let mc = Self::initialize(mc_opts, ta_spec, unknown, ctx.clone());
         if let Err(mc_err) = mc {
             return Err(ModelCheckerSetupError::ErrorInitializingModelChecker(
                 mc_err,
@@ -166,32 +183,24 @@ pub trait ModelChecker: Sized {
 }
 
 /// Result type for initialization of a model checker
-#[derive(Debug, Clone, PartialEq)]
-pub enum ModelCheckerSetupError<
-    TE: error::Error,
-    SE: error::Error,
-    CE: error::Error,
-    IE: error::Error,
-> {
+///
+/// The error is parameterized by the model checker it originates from, as every
+/// stage of the setup reports the error type of that model checker.
+#[derive(Debug)]
+pub enum ModelCheckerSetupError<M: ModelChecker> {
     /// Could not initialize model checker because transformation of threshold
     /// automaton failed
-    ErrorTransformingTA(TE),
+    ErrorTransformingTA(TAErrorOf<M>),
     /// Could not initialize model checker because transformation of
     /// specification failed
-    ErrorTransformingSpec(SE),
+    ErrorTransformingSpec(SpecErrorOf<M>),
     /// Could not initialize model checker because context could not be initialized
-    ErrorContextSetup(CE),
+    ErrorContextSetup(ContextErrorOf<M>),
     /// Error that can occur during initialization
-    ErrorInitializingModelChecker(IE),
+    ErrorInitializingModelChecker(M::InitializationError),
 }
 
-impl<TE, SE, CE, IE> fmt::Display for ModelCheckerSetupError<TE, SE, CE, IE>
-where
-    TE: error::Error,
-    SE: error::Error,
-    CE: error::Error,
-    IE: error::Error,
-{
+impl<M: ModelChecker> fmt::Display for ModelCheckerSetupError<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ModelCheckerSetupError::ErrorTransformingTA(e) => write!(
@@ -212,29 +221,22 @@ where
     }
 }
 
-impl<TE, SE, CE, IE> error::Error for ModelCheckerSetupError<TE, SE, CE, IE>
-where
-    TE: error::Error,
-    SE: error::Error,
-    CE: error::Error,
-    IE: error::Error,
-{
-}
-
 /// Result type for a model checking run
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModelCheckerResult {
-    /// Threshold automaton fulfills all specifications
+    /// Threshold automaton fulfills all the specification
     SAFE,
     /// Threshold automaton does not fulfill the specification
-    ///
-    /// The string contains the name of the violated specification and the path
-    /// is a concrete error path that serves as an example for the violation
-    UNSAFE(Vec<(String, Box<Path>)>),
-    /// Model checker could not determine if the specification holds or not
-    ///
-    /// The vector contains the names of the specifications for which the result
-    /// could not be determined.
+    UNSAFE {
+        /// Names of the violated specifications, each with a concrete error
+        /// path that serves as an example for the violation
+        violations: Vec<(String, Box<Path>)>,
+        /// Names of the specifications for which the model checker could not
+        /// determine whether they hold
+        unknown: Vec<String>,
+    },
+    /// The model checker could not determine if the specification holds or not.
+    /// The vector contains the names of the specifications that are unknown
     UNKNOWN(Vec<String>),
 }
 
@@ -251,41 +253,45 @@ pub trait SpecificationTrait<C: ModelCheckerContext>: Sized + fmt::Debug {
     /// Error occurring when transformation from ELTL specification fails
     type TransformationError: error::Error + Sized;
     /// Internal specification type the model checker works on
-    type InternalSpecType: Sized + TargetSpec;
+    type InternalSpecType: Sized + TASpecification;
 
     /// Try to derive the specification type from ELTL specification
+    ///
+    /// Returns the translated specifications and the names of the properties
+    /// that could not be translated, but should be reported as unknown.
     fn try_from_eltl(
         spec: impl Iterator<Item = (String, ELTLExpression)>,
         ctx: &C,
-    ) -> Result<Vec<Self>, Self::TransformationError>;
+    ) -> Result<(Vec<Self>, Vec<String>), Self::TransformationError>;
 
     /// Create threshold automata to check
     ///
-    /// This function allows to pair a specification with a threshold automaton
+    /// This function allows to pair a specification with a threshold automaton.
+    /// Each pair is labeled with the name of the property it belongs to.
     fn transform_threshold_automaton<TA: ThresholdAutomaton + ModifiableThresholdAutomaton>(
         ta: TA,
         specs: Vec<Self>,
         ctx: &C,
-    ) -> Vec<(Self::InternalSpecType, TA)>;
+    ) -> Vec<(String, Self::InternalSpecType, TA)>;
 }
 
-/// Common trait implemented by types that specify a target configuration
-/// in model checking
+/// Common trait implemented by specifications
 ///
-/// This trait is mostly used in preprocessing to ensure target locations are not
-/// removed by accident
-pub trait TargetSpec: Display {
-    /// Get the locations that appear in the target
+/// This trait is mostly used in preprocessing to inform the preprocessor which
+/// locations and variables appear in the specification, to ensure that they can
+/// be treated separately
+pub trait TASpecification: Display {
+    /// Get the locations that appear in the specification
     ///
     /// This function can be used in the preprocessing to ensure no locations
     /// from the specification are removed
-    fn get_locations_in_target(&self) -> impl IntoIterator<Item = &Location>;
+    fn locs_appearing(&self) -> impl IntoIterator<Item = &Location>;
 
     /// Get the variable constraints that appear in target
     ///
     /// This function can be used to get the interval constraints of variables
     /// in the target specification.
-    fn get_variable_constraint(&self) -> impl IntoIterator<Item = &LIAVariableConstraint>;
+    fn var_constraint(&self) -> impl IntoIterator<Item = &LIAVariableConstraint>;
 }
 
 /// Trait that needs to be implemented by an internal threshold automaton
@@ -381,7 +387,7 @@ impl ModelCheckerContext for SMTBddContext {
 }
 
 impl<C: ModelCheckerContext, SC> TATrait<C, SC> for GeneralThresholdAutomaton {
-    type TransformationError = DummyError;
+    type TransformationError = Infallible;
 
     fn try_from_general_ta(
         ta: GeneralThresholdAutomaton,
@@ -405,18 +411,6 @@ impl<C: ModelCheckerContext, SC> TATrait<C, SC> for LIAThresholdAutomaton {
         Ok(vec![lta])
     }
 }
-
-/// Error that should never be built
-#[derive(Debug)]
-pub struct DummyError {}
-
-impl fmt::Display for DummyError {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unreachable!("This error should never have been built")
-    }
-}
-
-impl error::Error for DummyError {}
 
 #[cfg(test)]
 mod tests {

@@ -7,8 +7,8 @@
 
 use taco_smt_encoder::SMTSolverBuilder;
 use taco_threshold_automaton::{
+    RuleDefinition, ThresholdAutomaton,
     lia_threshold_automaton::{LIAThresholdAutomaton, LIAVariableConstraint},
-    {RuleDefinition, ThresholdAutomaton},
 };
 
 use crate::{
@@ -156,20 +156,34 @@ impl IntervalTABuilder {
                     thr_guard.get_threshold_constraint(),
                 );
 
-                Some(
-                    order_builder
-                        .add_single_variable_interval(thr_guard.get_atom(), &interval_boundary),
-                )
+                // We need to add the exact interval into the order to correctly
+                // determine when constraints are satisfied
+                let exact_required = thr_guard
+                    .get_threshold_constraint()
+                    .get_op()
+                    .needs_exact_interval();
+
+                Some(order_builder.add_single_variable_interval(
+                    thr_guard.get_atom(),
+                    &interval_boundary,
+                    exact_required,
+                ))
             }
             LIAVariableConstraint::SumVarConstraint(thr_guard) => {
                 let interval_boundary = IntervalBoundary::from_threshold_constraint(
                     thr_guard.get_threshold_constraint(),
                 );
 
-                Some(
-                    order_builder
-                        .add_multi_variable_interval(thr_guard.get_atoms(), &interval_boundary),
-                )
+                let exact_required = thr_guard
+                    .get_threshold_constraint()
+                    .get_op()
+                    .needs_exact_interval();
+
+                Some(order_builder.add_multi_variable_interval(
+                    thr_guard.get_atoms(),
+                    &interval_boundary,
+                    exact_required,
+                ))
             }
         }
     }

@@ -7,13 +7,13 @@ mod test_preprocessing {
     use std::{collections::HashSet, env, fs};
 
     use taco_model_checker::{
-        DummyError, ModelCheckerContext, TargetSpec,
+        ModelCheckerContext, TASpecification,
+        internal_spec::ErrorSpec,
         preprocessing::{
             CollapseLocations, DropSelfLoops, DropUnreachableLocations, DropUnsatisfiableRules,
             Preprocessor, RemoveUnusedVariables, ReplaceTrivialGuardsSMT,
             ReplaceTrivialGuardsStatic,
         },
-        reachability_specification::ReachabilityProperty,
     };
     use taco_parser::ParseTAWithLTL;
     use taco_smt_encoder::SMTSolverBuilder;
@@ -32,12 +32,12 @@ mod test_preprocessing {
         }
     }
 
-    impl TargetSpec for DummySpec {
-        fn get_locations_in_target(&self) -> impl IntoIterator<Item = &Location> {
+    impl TASpecification for DummySpec {
+        fn locs_appearing(&self) -> impl IntoIterator<Item = &Location> {
             self.0.iter()
         }
 
-        fn get_variable_constraint(
+        fn var_constraint(
             &self,
         ) -> impl IntoIterator<
             Item = &taco_threshold_automaton::lia_threshold_automaton::LIAVariableConstraint,
@@ -58,7 +58,7 @@ mod test_preprocessing {
     pub struct DummyContext;
 
     impl ModelCheckerContext for DummyContext {
-        type CreationError = DummyError;
+        type CreationError = std::convert::Infallible;
 
         type ContextOptions = ();
 
@@ -412,7 +412,7 @@ mod test_preprocessing {
 
                 let spec = spec.expressions();
                 let properties = spec.iter().map(|(name, eltlexpression)| {
-                    ReachabilityProperty::from_named_eltl(name, eltlexpression.clone())
+                    ErrorSpec::from_named_eltl(name, eltlexpression.clone())
                 });
 
                 for property in properties {

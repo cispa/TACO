@@ -14,9 +14,9 @@ use log::warn;
 use taco_display_utils::{
     display_iterator_stable_order, indent_all, join_iterator, join_iterator_and_add_back,
 };
-use taco_model_checker::{ModelCheckerContext, TATrait, TargetSpec};
+use taco_model_checker::{ModelCheckerContext, TASpecification, TATrait};
 use taco_smt_encoder::ProvidesSMTSolverBuilder;
-use taco_threshold_automaton::expressions::{BooleanConnective, IsDeclared};
+use taco_threshold_automaton::expressions::{And, BooleanConnective, IsDeclared, Or};
 use taco_threshold_automaton::general_threshold_automaton::{
     Action, GeneralThresholdAutomaton, Rule, UpdateExpression,
 };
@@ -27,6 +27,7 @@ use taco_threshold_automaton::lia_threshold_automaton::{
 
 use taco_threshold_automaton::{
     ActionDefinition, LocationConstraint, RuleDefinition, ThresholdAutomaton, VariableConstraint,
+    impl_bitand, impl_bitor,
 };
 use taco_threshold_automaton::{
     expressions::{BooleanExpression, Location, Parameter, Variable},
@@ -59,7 +60,7 @@ pub struct IntervalThresholdAutomaton {
     /// Current interval order
     order: StaticIntervalOrder,
     /// Order expression
-    pub order_expr: Vec<BooleanExpression<Parameter>>,
+    order_expr: Vec<BooleanExpression<Parameter>>,
 }
 
 impl IntervalThresholdAutomaton {
@@ -346,7 +347,7 @@ impl IsDeclared<Variable> for IntervalThresholdAutomaton {
     }
 }
 
-impl<C: ModelCheckerContext + ProvidesSMTSolverBuilder, SC: TargetSpec> TATrait<C, SC>
+impl<C: ModelCheckerContext + ProvidesSMTSolverBuilder, SC: TASpecification> TATrait<C, SC>
     for IntervalThresholdAutomaton
 {
     type TransformationError = IntervalTATransformationError;
@@ -368,11 +369,7 @@ impl<C: ModelCheckerContext + ProvidesSMTSolverBuilder, SC: TargetSpec> TATrait<
         // TODO: remove this preprocessing when sum of variables is implemented
         let lta = lta.unwrap().into_ta_without_sum_vars();
 
-        let target_constrs = spec_ctx
-            .get_variable_constraint()
-            .into_iter()
-            .cloned()
-            .collect();
+        let target_constrs = spec_ctx.var_constraint().into_iter().cloned().collect();
 
         let builder = IntervalTABuilder::new(lta, solver_builder, target_constrs);
 
@@ -803,6 +800,20 @@ impl IntervalConstraint {
     }
 }
 
+impl And for IntervalConstraint {
+    fn and(self, other: Self) -> Self {
+        IntervalConstraint::Conj(Box::new(self), Box::new(other))
+    }
+}
+impl_bitand!(IntervalConstraint);
+
+impl Or for IntervalConstraint {
+    fn or(self, other: Self) -> Self {
+        IntervalConstraint::Disj(Box::new(self), Box::new(other))
+    }
+}
+impl_bitor!(IntervalConstraint);
+
 #[derive(Debug, Clone, PartialEq)]
 /// Error that can occur during the construction of an [IntervalConstraint]
 pub enum IntervalConstraintConstructionError {
@@ -950,10 +961,16 @@ mod tests {
     fn test_interval_threshold_automaton_getters() {
         let var = Variable::new("x");
         let i1 = Interval::new_constant(0, 1);
-        let i2 = Interval::new_constant(1, 3);
+        let i2 = Interval::new_constant(1, 2);
         let i3 = Interval::new(
-            IntervalBoundary::from_const(3),
+            IntervalBoundary::from_const(2),
             false,
+            IntervalBoundary::from_const(2),
+            false,
+        );
+        let i4 = Interval::new(
+            IntervalBoundary::from_const(2),
+            true,
             IntervalBoundary::new_infty(),
             true,
         );
@@ -1005,7 +1022,7 @@ mod tests {
             0,
             Location::new("l1"),
             Location::new("l2"),
-            IntervalConstraint::SingleVarIntervalConstr(var.clone(), vec![i3.clone()]),
+            IntervalConstraint::SingleVarIntervalConstr(var.clone(), vec![i4.clone()]),
             vec![IntervalTAAction::new(
                 var.clone(),
                 IntervalActionEffect::Inc(1),
@@ -1040,7 +1057,7 @@ mod tests {
                 &BooleanExpression::ComparisonExpression(
                     Box::new(IntegerExpression::Const(1)),
                     ComparisonOp::Lt,
-                    Box::new(IntegerExpression::Const(3)),
+                    Box::new(IntegerExpression::Const(2)),
                 )
             ]
         );
@@ -1064,21 +1081,15 @@ mod tests {
 
         assert_eq!(
             interval_threshold_automaton.get_initial_interval(&var),
-            vec![
-                &Interval::zero(),
-                &Interval::new(
-                    IntervalBoundary::from_const(1),
-                    false,
-                    IntervalBoundary::from_const(3),
-                    true
-                ),
-                &Interval::new(
-                    IntervalBoundary::from_const(3),
-                    false,
-                    IntervalBoundary::new_infty(),
-                    true
-                )
-            ]
+            vec![&i1, &i2, &i3, &i4,],
+            "Got: {}\nExpected: {}",
+            join_iterator(
+                interval_threshold_automaton
+                    .get_initial_interval(&var)
+                    .iter(),
+                ","
+            ),
+            join_iterator([&i1, &i2, &i3, &i4].iter(), ",")
         );
         assert_eq!(
             interval_threshold_automaton.get_zero_interval(&var),
@@ -1086,7 +1097,7 @@ mod tests {
         );
         assert_eq!(
             interval_threshold_automaton.get_intervals(&var),
-            &vec![i1.clone(), i2.clone(), i3.clone()]
+            &vec![i1.clone(), i2.clone(), i3.clone(), i4.clone()]
         );
         assert_eq!(
             interval_threshold_automaton.get_previous_interval(&var, &i1),
@@ -1110,6 +1121,10 @@ mod tests {
         );
         assert_eq!(
             interval_threshold_automaton.get_next_interval(&var, &i3),
+            Some(&i4)
+        );
+        assert_eq!(
+            interval_threshold_automaton.get_next_interval(&var, &i4),
             None
         );
 
@@ -1653,7 +1668,7 @@ mod tests {
         let interval_threshold_automaton = interval_tas.next().unwrap();
         assert!(interval_tas.next().is_none());
 
-        let expected = "thresholdAutomaton test_ta {\n    intervalOrder {\n        x: [0, 1[, [1, 3[, [3, ∞[;\n    }\n\n    shared x;\n\n    parameters n;\n\n    assumptions (3) {\n        n > 3;\n        0 < 1;\n        1 < 3;\n    }\n\n    locations (2) {\n        l1:[0];\n        l2:[1];\n    }\n\n    inits (0) {\n    }\n\n    rules (1) {\n        0: l1 -> l2\n            when ( x ∈ { [3, ∞[ } )\n            do { x ++ };\n    }\n}\n";
+        let expected = "thresholdAutomaton test_ta {\n    intervalOrder {\n        x: [0, 1[, [1, 2[, [2, 2], ]2, ∞[;\n    }\n\n    shared x;\n\n    parameters n;\n\n    assumptions (3) {\n        n > 3;\n        0 < 1;\n        1 < 2;\n    }\n\n    locations (2) {\n        l1:[0];\n        l2:[1];\n    }\n\n    inits (0) {\n    }\n\n    rules (1) {\n        0: l1 -> l2\n            when ( x ∈ { ]2, ∞[ } )\n            do { x ++ };\n    }\n}\n";
 
         assert_eq!(interval_threshold_automaton.to_string(), expected);
     }
@@ -2367,5 +2382,45 @@ mod tests {
                 .to_string()
                 .contains("Found comparison guard as part of a interval target constraint")
         );
+    }
+
+    #[test]
+    fn test_and_trait_and_bitand_operator() {
+        let var = Variable::new("x");
+        let i1 = Interval::new_constant(0, 1);
+        let i2 = Interval::new_constant(1, 2);
+
+        let lhs = IntervalConstraint::SingleVarIntervalConstr(var.clone(), vec![i1.clone()]);
+        let rhs = IntervalConstraint::SingleVarIntervalConstr(var.clone(), vec![i2.clone()]);
+
+        let lhs_clone = lhs.clone();
+        let expected = IntervalConstraint::Conj(Box::new(lhs_clone.clone()), Box::new(rhs.clone()));
+
+        // The `and` method of the `And` trait combines both constraints with a
+        // conjunction, keeping the operand order
+        assert_eq!(lhs_clone.and(rhs.clone()), expected);
+
+        // The `&` operator delegates to `And::and`
+        assert_eq!(lhs & rhs, expected);
+    }
+
+    #[test]
+    fn test_or_trait_and_bitor_operator() {
+        let var = Variable::new("x");
+        let i1 = Interval::new_constant(0, 1);
+        let i2 = Interval::new_constant(1, 2);
+
+        let lhs = IntervalConstraint::SingleVarIntervalConstr(var.clone(), vec![i1.clone()]);
+        let rhs = IntervalConstraint::SingleVarIntervalConstr(var.clone(), vec![i2.clone()]);
+
+        let lhs_clone = lhs.clone();
+        let expected = IntervalConstraint::Disj(Box::new(lhs_clone.clone()), Box::new(rhs.clone()));
+
+        // The `or` method of the `Or` trait combines both constraints with a
+        // disjunction, keeping the operand order
+        assert_eq!(lhs_clone.or(rhs.clone()), expected);
+
+        // The `|` operator delegates to `Or::or`
+        assert_eq!(lhs | rhs, expected);
     }
 }

@@ -8,11 +8,21 @@ mod test_cs_mc_full {
 
     use taco_acs_model_checker::ACSModelChecker;
 
-    use taco_model_checker::ModelChecker;
+    use taco_model_checker::{ModelChecker, ModelCheckerResult};
     use taco_parser::{ParseTAWithLTL, bymc::ByMCParser};
     use taco_smt_encoder::SMTSolverBuilderCfg;
 
     const BYMC_BENCHMARK_FOLDER: &str = "../../benchmarks/TACO/isola18/ta-(handcoded)";
+
+    /// Assert that no property is violated and exactly the properties in
+    /// `expected_unknown` are reported as unknown
+    fn assert_no_violation(res: ModelCheckerResult, expected_unknown: &[&str]) {
+        let ModelCheckerResult::UNKNOWN(mut unknown) = res else {
+            panic!("Expected UNKNOWN({expected_unknown:?}), got {res:?}");
+        };
+        unknown.sort();
+        assert_eq!(unknown, expected_unknown);
+    }
 
     // #[test]
     // fn test_bosco() {
@@ -60,7 +70,8 @@ mod test_cs_mc_full {
         );
         let mc = mc.unwrap();
         let res = mc.verify(true).unwrap();
-        assert!(res.is_safe())
+        // liveness properties are not supported by the ACS model checker
+        assert_no_violation(res, &["corr", "relay"])
     }
 
     #[test]
@@ -82,7 +93,8 @@ mod test_cs_mc_full {
         );
         let mc = mc.unwrap();
         let res = mc.verify(true).unwrap();
-        assert!(res.is_safe())
+        // liveness properties are not supported by the ACS model checker
+        assert_no_violation(res, &["fast0", "fast1", "termination"])
     }
 
     #[test]
@@ -104,7 +116,8 @@ mod test_cs_mc_full {
         );
         let mc = mc.unwrap();
         let res = mc.verify(true).unwrap();
-        assert!(res.is_safe())
+        // liveness properties are not supported by the ACS model checker
+        assert_no_violation(res, &["corr", "relay"])
     }
 
     #[test]
@@ -126,7 +139,8 @@ mod test_cs_mc_full {
         );
         let mc = mc.unwrap();
         let res = mc.verify(true).unwrap();
-        assert!(res.is_safe())
+        // liveness properties are not supported by the ACS model checker
+        assert_no_violation(res, &["termination"])
     }
 
     #[test]
@@ -148,6 +162,7 @@ mod test_cs_mc_full {
         );
         let mc = mc.unwrap();
         let res = mc.verify(true).unwrap();
-        assert!(res.is_safe())
+        // liveness properties are not supported by the ACS model checker
+        assert_no_violation(res, &["nontriv", "termination1", "termination2"])
     }
 }

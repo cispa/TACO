@@ -15,14 +15,17 @@ use taco_display_utils::{
 
 use crate::expressions::fraction::Fraction;
 use crate::expressions::{
-    Atomic, BooleanConnective, BooleanExpression, IntegerExpression, Parameter, Variable,
+    And, Atomic, BooleanConnective, BooleanExpression, IntegerExpression, Or, Parameter, Variable,
 };
 use crate::expressions::{IsDeclared, Location};
 use crate::general_threshold_automaton::{Action, GeneralThresholdAutomaton, Rule};
 use crate::lia_threshold_automaton::integer_thresholds::{
     IntoNoDivBooleanExpr, Threshold, ThresholdConstraint, ThresholdConstraintOver, WeightedSum,
 };
-use crate::{LocationConstraint, RuleDefinition, ThresholdAutomaton, VariableConstraint};
+use crate::{
+    LocationConstraint, RuleDefinition, ThresholdAutomaton, VariableConstraint, impl_bitand,
+    impl_bitor,
+};
 
 use super::{
     ComparisonConstraint, ComparisonConstraintCreationError, LIARule, LIAThresholdAutomaton,
@@ -319,6 +322,66 @@ impl Display for LIARule {
 }
 
 impl LIAVariableConstraint {
+    /// Check whether constraint is constant true
+    ///
+    /// This function checks whether the constraint corresponds to `true`. It
+    /// will not do semantic analysis, i.e. a constraint of the form `0 = 0`
+    /// will not be considered as top.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use taco_threshold_automaton::lia_threshold_automaton::LIAVariableConstraint;
+    ///
+    /// assert!(LIAVariableConstraint::True.is_top());
+    /// assert!(!LIAVariableConstraint::False.is_top());
+    /// ```
+    pub fn is_top(&self) -> bool {
+        match self {
+            LIAVariableConstraint::False
+            | LIAVariableConstraint::ComparisonConstraint(_)
+            | LIAVariableConstraint::SingleVarConstraint(_)
+            | LIAVariableConstraint::SumVarConstraint(_) => false,
+            LIAVariableConstraint::BinaryGuard(lhs, BooleanConnective::And, rhs) => {
+                lhs.is_top() && rhs.is_top()
+            }
+            LIAVariableConstraint::BinaryGuard(lhs, BooleanConnective::Or, rhs) => {
+                lhs.is_top() || rhs.is_top()
+            }
+            LIAVariableConstraint::True => true,
+        }
+    }
+
+    /// Check whether constraint is constant false
+    ///
+    /// This function checks whether the constraint corresponds to `false`. It
+    /// will not do semantic analysis, i.e. a constraint of the form `0 = 1`
+    /// will not be considered as bottom.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use taco_threshold_automaton::lia_threshold_automaton::LIAVariableConstraint;
+    ///
+    /// assert!(LIAVariableConstraint::False.is_bot());
+    /// assert!(!LIAVariableConstraint::True.is_bot());
+    /// ```
+    pub fn is_bot(&self) -> bool {
+        match self {
+            LIAVariableConstraint::True
+            | LIAVariableConstraint::ComparisonConstraint(_)
+            | LIAVariableConstraint::SingleVarConstraint(_)
+            | LIAVariableConstraint::SumVarConstraint(_) => false,
+            LIAVariableConstraint::BinaryGuard(lhs, BooleanConnective::And, rhs) => {
+                lhs.is_bot() || rhs.is_bot()
+            }
+            LIAVariableConstraint::BinaryGuard(lhs, BooleanConnective::Or, rhs) => {
+                lhs.is_bot() && rhs.is_bot()
+            }
+            LIAVariableConstraint::False => true,
+        }
+    }
+
     /// Get all [`Threshold`]s appearing in the constraint
     fn get_distinct_thresholds(&self) -> HashSet<Threshold> {
         match self {
@@ -453,6 +516,20 @@ impl LIAVariableConstraint {
     }
 }
 
+impl And for LIAVariableConstraint {
+    fn and(self, other: Self) -> Self {
+        LIAVariableConstraint::BinaryGuard(Box::new(self), BooleanConnective::And, Box::new(other))
+    }
+}
+impl_bitand!(LIAVariableConstraint);
+
+impl Or for LIAVariableConstraint {
+    fn or(self, other: Self) -> Self {
+        LIAVariableConstraint::BinaryGuard(Box::new(self), BooleanConnective::Or, Box::new(other))
+    }
+}
+impl_bitor!(LIAVariableConstraint);
+
 impl VariableConstraint for LIAVariableConstraint {
     fn as_boolean_expr(&self) -> crate::expressions::BooleanExpression<Variable> {
         match self {
@@ -474,22 +551,6 @@ impl VariableConstraint for LIAVariableConstraint {
     }
 }
 
-impl std::ops::BitAnd for LIAVariableConstraint {
-    type Output = LIAVariableConstraint;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        LIAVariableConstraint::BinaryGuard(Box::new(self), BooleanConnective::And, Box::new(rhs))
-    }
-}
-
-impl std::ops::BitOr for LIAVariableConstraint {
-    type Output = LIAVariableConstraint;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        LIAVariableConstraint::BinaryGuard(Box::new(self), BooleanConnective::Or, Box::new(rhs))
-    }
-}
-
 impl<T: Atomic> SingleAtomConstraint<T> {
     /// Create a new single variable constraint
     pub fn new(atom: T, thr: ThresholdConstraint) -> Self {
@@ -508,7 +569,7 @@ impl<T: Atomic> SingleAtomConstraint<T> {
 
     /// Get the variable the constraint constrains
     pub fn get_atom(&self) -> &T {
-        self.0.get_variable()
+        self.0.get_t()
     }
 
     /// Transform the constraint into a [`BooleanExpression`]
@@ -587,7 +648,7 @@ impl<T: Atomic> SumAtomConstraint<T> {
 
     /// Get the variable
     pub fn get_atoms(&self) -> &WeightedSum<T> {
-        self.0.get_variable()
+        self.0.get_t()
     }
 
     /// Get boolean expression of the guard
@@ -963,9 +1024,9 @@ mod tests {
                     (LIAVariableConstraint::SingleVarConstraint(SingleAtomConstraint::new(
                         Variable::new("var1"),
                         ThresholdConstraint::new(
-                            ThresholdCompOp::Lt,
+                            ThresholdCompOp::Leq,
                             Vec::<(Parameter, Fraction)>::new(),
-                            1,
+                            0,
                         ),
                     ))) & LIAVariableConstraint::SingleVarConstraint(SingleAtomConstraint::new(
                         Variable::new("var1"),
@@ -981,9 +1042,9 @@ mod tests {
                     LIAVariableConstraint::SingleVarConstraint(SingleAtomConstraint::new(
                         Variable::new("var2"),
                         ThresholdConstraint::new(
-                            ThresholdCompOp::Lt,
+                            ThresholdCompOp::Leq,
                             Vec::<(Parameter, Fraction)>::new(),
-                            1,
+                            0,
                         ),
                     )) & LIAVariableConstraint::SingleVarConstraint(SingleAtomConstraint::new(
                         Variable::new("var2"),
@@ -2578,6 +2639,70 @@ mod tests {
     }
 
     #[test]
+    fn test_is_top() {
+        assert!(LIAVariableConstraint::True.is_top());
+        assert!(!LIAVariableConstraint::False.is_top());
+
+        // A conjunction is top only if both conjuncts are top
+        let guard = LIAVariableConstraint::True & LIAVariableConstraint::True;
+        assert!(guard.is_top());
+
+        let guard = LIAVariableConstraint::True & LIAVariableConstraint::False;
+        assert!(!guard.is_top());
+
+        // A disjunction is top if at least one disjunct is top
+        let guard = LIAVariableConstraint::False | LIAVariableConstraint::True;
+        assert!(guard.is_top());
+
+        let guard = LIAVariableConstraint::False | LIAVariableConstraint::False;
+        assert!(!guard.is_top());
+
+        // Propagation through nested binary guards
+        let guard = (LIAVariableConstraint::True & LIAVariableConstraint::False)
+            | LIAVariableConstraint::True;
+        assert!(guard.is_top());
+
+        // Atomic constraints are never top (no semantic analysis)
+        let guard = LIAVariableConstraint::SingleVarConstraint(SingleAtomConstraint::new(
+            Variable::new("var1"),
+            ThresholdConstraint::new(ThresholdCompOp::Geq, Vec::<(Parameter, Fraction)>::new(), 0),
+        ));
+        assert!(!guard.is_top());
+    }
+
+    #[test]
+    fn test_is_bot() {
+        assert!(LIAVariableConstraint::False.is_bot());
+        assert!(!LIAVariableConstraint::True.is_bot());
+
+        // A conjunction is bot if at least one conjunct is bot
+        let guard = LIAVariableConstraint::False & LIAVariableConstraint::True;
+        assert!(guard.is_bot());
+
+        let guard = LIAVariableConstraint::True & LIAVariableConstraint::True;
+        assert!(!guard.is_bot());
+
+        // A disjunction is bot only if both disjuncts are bot
+        let guard = LIAVariableConstraint::False | LIAVariableConstraint::False;
+        assert!(guard.is_bot());
+
+        let guard = LIAVariableConstraint::False | LIAVariableConstraint::True;
+        assert!(!guard.is_bot());
+
+        // Propagation through nested binary guards
+        let guard = (LIAVariableConstraint::True | LIAVariableConstraint::False)
+            & LIAVariableConstraint::False;
+        assert!(guard.is_bot());
+
+        // Atomic constraints are never bot (no semantic analysis)
+        let guard = LIAVariableConstraint::SingleVarConstraint(SingleAtomConstraint::new(
+            Variable::new("var1"),
+            ThresholdConstraint::new(ThresholdCompOp::Geq, Vec::<(Parameter, Fraction)>::new(), 0),
+        ));
+        assert!(!guard.is_bot());
+    }
+
+    #[test]
     fn test_guards_to_boolean() {
         let guard = LIAVariableConstraint::True;
         assert_eq!(guard.as_boolean_expr(), BooleanExpression::True);
@@ -2813,6 +2938,7 @@ mod tests {
 
     #[test]
     fn test_new_multi_var_threshold_all_vars_neg() {
+        // -1 * var1 + -2 * var2 >=  3 * n + 5
         let guard = SumAtomConstraint::try_new(
             BTreeMap::from([
                 (Variable::new("var1"), -Fraction::from(1)),
@@ -2826,15 +2952,16 @@ mod tests {
         )
         .unwrap();
 
+        // var1 + 2 * var2 =< -3 * n - 5
         let expected = SumAtomConstraint(ThresholdConstraintOver::new(
             WeightedSum::new(BTreeMap::from([
                 (Variable::new("var1"), 1),
                 (Variable::new("var2"), 2),
             ])),
             ThresholdConstraint::new(
-                ThresholdCompOp::Lt,
+                ThresholdCompOp::Leq,
                 BTreeMap::from([(Parameter::new("n"), -Fraction::from(3))]),
-                -Fraction::from(6),
+                -Fraction::from(5),
             ),
         ));
 

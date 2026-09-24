@@ -5,11 +5,12 @@ mod test_extract_spec_from_benchmarks {
     use std::time::Instant;
     use std::{env, fs};
 
+    use taco_model_checker::internal_spec::{ErrorSpec, ErrorTarget};
     use taco_model_checker::preprocessing::{
         DropSelfLoops, DropUnreachableLocations, DropUnsatisfiableRules, RemoveUnusedVariables,
         ReplaceTrivialGuardsSMT,
     };
-    use taco_model_checker::reachability_specification::ReachabilityProperty;
+
     use taco_model_checker::{ModelChecker, ModelCheckerResult, SpecificationTrait, preprocessing};
 
     use taco_parser::ParseTAWithLTL;
@@ -70,7 +71,7 @@ mod test_extract_spec_from_benchmarks {
                 let parsed_spec = ltl
                     .expressions()
                     .iter()
-                    .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+                    .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
                     .collect::<Vec<_>>();
 
                 println!("Parsed {} ltl expressions into spec", parsed_spec.len());
@@ -84,22 +85,20 @@ mod test_extract_spec_from_benchmarks {
                 ];
                 let ctx = SMTSolverBuilder::default();
 
-                let ta_spec =
-                    ReachabilityProperty::transform_threshold_automaton(ta, parsed_spec, &ctx);
+                let ta_spec = ErrorSpec::transform_threshold_automaton(ta, parsed_spec, &ctx);
                 let ta_spec = ta_spec
                     .into_iter()
-                    .map(|(spec, mut ta)| {
+                    .map(|(name, spec, mut ta)| {
                         // Preprocessing on tas with information from the specification
 
-                        use taco_model_checker::TATrait;
-                        use taco_threshold_automaton::general_threshold_automaton::GeneralThresholdAutomaton;
                         for processor in preprocessors.iter() {
                             processor.process(&mut ta, &spec, &ctx);
                         }
 
-                        let ta: Vec<GeneralThresholdAutomaton> = GeneralThresholdAutomaton::try_from_general_ta(ta, &ctx, &())?;
+                        let ta: Vec<GeneralThresholdAutomaton> =
+                            GeneralThresholdAutomaton::try_from_general_ta(ta, &ctx, &())?;
 
-                        Ok::<_, Box<dyn std::error::Error>>((spec, ta))
+                        Ok::<_, Box<dyn std::error::Error>>((name, spec, ta))
                     })
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
@@ -107,6 +106,7 @@ mod test_extract_spec_from_benchmarks {
                 let mc = SMTModelChecker::initialize(
                     SMTModelCheckerOptions::new_parallel(),
                     ta_spec,
+                    Vec::new(),
                     SMTSolverBuilder::new(&SMTSolverBuilderCfg::new_z3()).unwrap(),
                 )
                 .expect("SMTModelChecker initialization failed");
@@ -171,7 +171,7 @@ mod test_extract_spec_from_benchmarks {
                 let parsed_spec = ltl
                     .expressions()
                     .iter()
-                    .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+                    .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
                     .collect::<Vec<_>>();
 
                 println!("Parsed {} ltl expressions into spec", parsed_spec.len());
@@ -185,11 +185,10 @@ mod test_extract_spec_from_benchmarks {
                 ];
                 let ctx = SMTSolverBuilder::default();
 
-                let ta_spec =
-                    ReachabilityProperty::transform_threshold_automaton(ta, parsed_spec, &ctx);
+                let ta_spec = ErrorSpec::transform_threshold_automaton(ta, parsed_spec, &ctx);
                 let ta_spec = ta_spec
                     .into_iter()
-                    .map(|(spec, mut ta)| {
+                    .map(|(name, spec, mut ta)| {
                         // Preprocessing on tas with information from the specification
 
                         for processor in preprocessors.iter() {
@@ -198,14 +197,25 @@ mod test_extract_spec_from_benchmarks {
 
                         let ta = GeneralThresholdAutomaton::try_from_general_ta(ta, &ctx, &())?;
 
-                        Ok::<_, Box<dyn std::error::Error>>((spec, ta))
+                        Ok::<_, Box<dyn std::error::Error>>((name, spec, ta))
                     })
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
 
+                // Properties without reachability target (e.g. liveness) are
+                // not supported by the SMT model checker
+                let mut expected_unknown = ta_spec
+                    .iter()
+                    .filter(|(_, spec, _)| !matches!(spec, ErrorTarget::Reach(_)))
+                    .map(|(name, _, _)| name.clone())
+                    .collect::<Vec<_>>();
+                expected_unknown.sort();
+                expected_unknown.dedup();
+
                 let mc = SMTModelChecker::initialize(
                     SMTModelCheckerOptions::default(),
                     ta_spec,
+                    Vec::new(),
                     SMTSolverBuilder::new(&SMTSolverBuilderCfg::new_z3()).unwrap(),
                 )
                 .expect("SMTModelChecker initialization failed");
@@ -214,7 +224,16 @@ mod test_extract_spec_from_benchmarks {
                     .verify(false)
                     .expect("Failed to verify threshold automaton");
 
-                assert!(matches!(res, ModelCheckerResult::SAFE));
+                if expected_unknown.is_empty() {
+                    assert_eq!(res, ModelCheckerResult::SAFE);
+                } else {
+                    let ModelCheckerResult::UNKNOWN(mut unknown) = res else {
+                        panic!("Expected UNKNOWN({expected_unknown:?}), got {res:?}");
+                    };
+                    unknown.sort();
+                    unknown.dedup();
+                    assert_eq!(unknown, expected_unknown);
+                }
 
                 let elapsed = now.elapsed();
                 println!(
@@ -287,7 +306,7 @@ mod test_extract_spec_from_benchmarks {
                 let parsed_spec = ltl
                     .expressions()
                     .iter()
-                    .flat_map(|(n, s)| ReachabilityProperty::from_named_eltl(n.clone(), s.clone()))
+                    .flat_map(|(n, s)| ErrorSpec::from_named_eltl(n.clone(), s.clone()))
                     .collect::<Vec<_>>();
 
                 println!("Parsed {} ltl expressions into spec", parsed_spec.len());
@@ -301,11 +320,10 @@ mod test_extract_spec_from_benchmarks {
                 ];
                 let ctx = SMTSolverBuilder::default();
 
-                let ta_spec =
-                    ReachabilityProperty::transform_threshold_automaton(ta, parsed_spec, &ctx);
+                let ta_spec = ErrorSpec::transform_threshold_automaton(ta, parsed_spec, &ctx);
                 let ta_spec = ta_spec
                     .into_iter()
-                    .map(|(spec, mut ta)| {
+                    .map(|(name, spec, mut ta)| {
                         // Preprocessing on tas with information from the specification
 
                         for processor in preprocessors.iter() {
@@ -314,7 +332,7 @@ mod test_extract_spec_from_benchmarks {
 
                         let ta = GeneralThresholdAutomaton::try_from_general_ta(ta, &ctx, &())?;
 
-                        Ok::<_, Box<dyn std::error::Error>>((spec, ta))
+                        Ok::<_, Box<dyn std::error::Error>>((name, spec, ta))
                     })
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
@@ -322,6 +340,7 @@ mod test_extract_spec_from_benchmarks {
                 let mc = SMTModelChecker::initialize(
                     SMTModelCheckerOptions::new_parallel(),
                     ta_spec,
+                    Vec::new(),
                     SMTSolverBuilder::new(&SMTSolverBuilderCfg::new_z3()).unwrap(),
                 )
                 .expect("SMTModelChecker initialization failed");

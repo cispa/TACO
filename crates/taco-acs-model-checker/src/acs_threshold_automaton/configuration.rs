@@ -17,7 +17,10 @@ use std::{
 
 use taco_display_utils::display_iterator_stable_order;
 use taco_interval_ta::{IntervalActionEffect, IntervalConstraint};
-use taco_model_checker::reachability_specification::{DisjunctionTargetConfig, TargetConfig};
+
+use taco_model_checker::internal_spec::upwards_closed_set::{
+    UpwardsClosedClause, UpwardsClosedSet,
+};
 use taco_smt_encoder::{
     SMTExpr, SMTSolver,
     expression_encoding::{EncodeToSMT, SMTVariableContext},
@@ -120,18 +123,21 @@ impl ACSTAConfig {
     /// Compute all configurations that correspond to an error state in the
     /// given disjunction over target configurations
     pub fn from_disjunct_target(
-        spec: &DisjunctionTargetConfig,
+        spec: &UpwardsClosedSet,
         ta: &ACSThresholdAutomaton,
     ) -> impl Iterator<Item = ACSTAConfig> {
-        spec.get_target_configs()
+        spec.upwards_closed_clauses()
             .flat_map(|target| Self::from_target_config(target, ta))
     }
 
     /// Compute a goal configuration from a single [`TargetConfig`]
-    pub fn from_target_config(spec: &TargetConfig, ta: &ACSThresholdAutomaton) -> HashSet<Self> {
+    pub fn from_target_config(
+        spec: &UpwardsClosedClause,
+        ta: &ACSThresholdAutomaton,
+    ) -> HashSet<Self> {
         let interval_constr = ta
             .interval_ta
-            .get_interval_constraint(spec.get_variable_constraint())
+            .get_interval_constraint(spec.variable_constr())
             .expect("Failed to derive interval constraint for target");
 
         let interval_cfgs = ACSIntervalState::get_target_interval_configs(interval_constr, ta);
@@ -316,7 +322,7 @@ impl ACSIntervalState {
         })
     }
 
-    /// Compute all potential predecessor interval configurations
+    /// Compute all potential predecessor interval configurations of one rule application
     pub fn compute_all_predecessor_configs(
         &self,
         rule: &CSRule,
@@ -338,6 +344,9 @@ impl ACSIntervalState {
                     })
                     .collect()
             })
+            .into_iter()
+            .filter(|is| rule.is_guard_enabled(is))
+            .collect()
     }
 
     /// Compute all possible interval configurations before the application of
@@ -533,15 +542,15 @@ impl ACSLocState {
     }
 
     /// Get the [`ACSLocState`] that corresponds to the target configuration
-    pub fn compute_target_cfg(spec: &TargetConfig, ta: &ACSThresholdAutomaton) -> Self {
+    pub fn compute_target_cfg(spec: &UpwardsClosedClause, ta: &ACSThresholdAutomaton) -> Self {
         debug_assert!(
-            spec.get_locations_to_uncover().count() == 0,
+            spec.locs_to_uncover().count() == 0,
             "This model checker currently does not support reachability constraints, this should have been caught"
         );
 
         let mut target = Self::new_all_zero(ta);
 
-        for (loc, n) in spec.get_locations_to_cover() {
+        for (loc, n) in spec.locs_to_cover() {
             target[ta.idx_ctx.to_cs_loc(loc)] = *n;
         }
 
@@ -653,10 +662,11 @@ mod mock_objects {
 mod tests {
     use std::collections::{HashMap, HashSet};
 
+    use taco_display_utils::join_iterator;
     use taco_interval_ta::{
         IntervalActionEffect, IntervalConstraint, builder::IntervalTABuilder, interval::Interval,
     };
-    use taco_model_checker::reachability_specification::{DisjunctionTargetConfig, TargetConfig};
+    use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
     use taco_smt_encoder::SMTSolverBuilder;
     use taco_threshold_automaton::{
         expressions::{
@@ -871,8 +881,8 @@ mod tests {
                 RuleBuilder::new(0, Location::new("l1"), Location::new("l2"))
                     .with_guard(BooleanExpression::ComparisonExpression(
                         Box::new(IntegerExpression::Atom(Variable::new("x"))),
-                        ComparisonOp::Gt,
-                        Box::new(IntegerExpression::Const(2)),
+                        ComparisonOp::Geq,
+                        Box::new(IntegerExpression::Const(3)),
                     ))
                     .with_action(
                         Action::new(
@@ -1065,9 +1075,9 @@ mod tests {
         let loc_l2 = cs_ta.idx_ctx.to_cs_loc(&Location::new("l2"));
         let loc_l3 = cs_ta.idx_ctx.to_cs_loc(&Location::new("l3"));
 
-        let target_1 = TargetConfig::new_cover([Location::new("l3")]).unwrap();
-        let target_2 = TargetConfig::new_cover([Location::new("l2")]).unwrap();
-        let disj = DisjunctionTargetConfig::new_from_targets("test".into(), [target_1, target_2]);
+        let target_1 = UpwardsClosedSet::new_cover([Location::new("l3")]);
+        let target_2 = UpwardsClosedSet::new_cover([Location::new("l2")]);
+        let disj = target_1 | target_2;
 
         let got_configs = ACSTAConfig::from_disjunct_target(&disj, &cs_ta).collect::<HashSet<_>>();
 
@@ -1125,8 +1135,8 @@ mod tests {
                 RuleBuilder::new(0, Location::new("l1"), Location::new("l2"))
                     .with_guard(BooleanExpression::ComparisonExpression(
                         Box::new(IntegerExpression::Atom(Variable::new("x"))),
-                        ComparisonOp::Gt,
-                        Box::new(IntegerExpression::Const(2)),
+                        ComparisonOp::Geq,
+                        Box::new(IntegerExpression::Const(3)),
                     ))
                     .with_action(
                         Action::new(
@@ -1146,6 +1156,7 @@ mod tests {
             .unwrap();
         let interval_ta = interval_tas.next().unwrap();
         assert!(interval_tas.next().is_none());
+
         let cs_ta = ACSThresholdAutomaton::new(interval_ta);
         let loc_l2 = cs_ta.idx_ctx.to_cs_loc(&Location::new("l2"));
         let loc_l3 = cs_ta.idx_ctx.to_cs_loc(&Location::new("l3"));
@@ -1156,13 +1167,14 @@ mod tests {
             Box::new(IntegerExpression::Const(0)),
         );
 
-        let target_1 =
-            TargetConfig::new_reach_with_var_constr([(Location::new("l3"), 1)], [], cstr.clone())
-                .unwrap();
-        let target_2 =
-            TargetConfig::new_reach_with_var_constr([(Location::new("l2"), 1)], [], cstr.clone())
-                .unwrap();
-        let disj = DisjunctionTargetConfig::new_from_targets("test".into(), [target_1, target_2]);
+        // l3 > 1 && x == 0
+        let target_1 = UpwardsClosedSet::new_var_constraint(cstr.clone().try_into().unwrap())
+            & UpwardsClosedSet::new_cover_int([(Location::new("l3"), 1)]);
+
+        // x == 0
+        let target_2 = UpwardsClosedSet::new_var_constraint(cstr.clone().try_into().unwrap())
+            & UpwardsClosedSet::new_cover_int([(Location::new("l2"), 1)]);
+        let disj = target_1 | target_2;
 
         let got_configs = ACSTAConfig::from_disjunct_target(&disj, &cs_ta).collect::<HashSet<_>>();
 
@@ -1191,7 +1203,13 @@ mod tests {
         });
         let expected_configs = configs_l2.chain(configs_l3).collect::<HashSet<_>>();
 
-        assert_eq!(got_configs, expected_configs)
+        assert_eq!(
+            got_configs,
+            expected_configs,
+            "Got: {}\nExpected: {}\n",
+            join_iterator(got_configs.iter().map(|c| c.display(&cs_ta)), "; "),
+            join_iterator(expected_configs.iter().map(|c| c.display(&cs_ta)), "; ")
+        )
     }
 
     #[test]
@@ -1308,7 +1326,7 @@ mod tests {
         let var_x = ta.idx_ctx.to_cs_var(&Variable::new("x"));
 
         let mut interval_state = ACSIntervalState::new_cfg_all_zero_interval(&ta);
-        interval_state[var_x] = ACSInterval(2);
+        interval_state[var_x] = ACSInterval(3);
 
         let loc_l3 = ta.idx_ctx.to_cs_loc(&Location::new("l3"));
         let loc_l2 = ta.idx_ctx.to_cs_loc(&Location::new("l2"));
@@ -1324,7 +1342,7 @@ mod tests {
 
         let got_string = config.display(&ta);
         let expected_string =
-            "locations: (l1 : 0, l2 : 1, l3 : 42), variables: (x : [3, ∞[, y : [0, 1[)";
+            "locations: (l1 : 0, l2 : 1, l3 : 42), variables: (x : ]2, ∞[, y : [0, 1[)";
 
         assert_eq!(&got_string, expected_string);
     }
@@ -1385,7 +1403,7 @@ mod tests {
         let var_x = ta.idx_ctx.to_cs_var(&Variable::new("x"));
 
         let mut interval_state = ACSIntervalState::new_cfg_all_zero_interval(&ta);
-        interval_state[var_x] = ACSInterval(2);
+        interval_state[var_x] = ACSInterval(3);
 
         let loc_l3 = ta.idx_ctx.to_cs_loc(&Location::new("l3"));
         let loc_l2 = ta.idx_ctx.to_cs_loc(&Location::new("l2"));
@@ -1400,7 +1418,7 @@ mod tests {
         };
 
         let got_string = config.display_compact(&ta);
-        let expected_string = "locations: (l2 : 1, l3 : 42), variables: (x : [3, ∞[)";
+        let expected_string = "locations: (l2 : 1, l3 : 42), variables: (x : ]2, ∞[)";
 
         assert_eq!(&got_string, expected_string);
     }
@@ -1513,6 +1531,7 @@ mod tests {
 
         let interval_state = ACSIntervalState::new_cfg_all_zero_interval(&cs_ta);
 
+        // x: [0,1[ [1, 2[ [2,2] ]2,...
         let got_states = ACSIntervalState::all_possible_interval_configs(&cs_ta);
 
         let mut state1 = interval_state.clone();
@@ -1520,6 +1539,9 @@ mod tests {
 
         let mut state2 = interval_state.clone();
         state2[var_x] = ACSInterval(2);
+
+        let mut state6 = interval_state.clone();
+        state6[var_x] = ACSInterval(3);
 
         let mut state3 = interval_state.clone();
         state3[var_y] = ACSInterval(1);
@@ -1532,6 +1554,10 @@ mod tests {
         state5[var_x] = ACSInterval(2);
         state5[var_y] = ACSInterval(1);
 
+        let mut state7 = interval_state.clone();
+        state7[var_x] = ACSInterval(3);
+        state7[var_y] = ACSInterval(1);
+
         let expected_states = HashSet::from([
             interval_state.clone(),
             state1,
@@ -1539,6 +1565,8 @@ mod tests {
             state3,
             state4,
             state5,
+            state6,
+            state7,
         ]);
         assert_eq!(
             got_states.into_iter().collect::<HashSet<_>>(),
@@ -1576,8 +1604,8 @@ mod tests {
                 RuleBuilder::new(0, Location::new("l1"), Location::new("l2"))
                     .with_guard(BooleanExpression::ComparisonExpression(
                         Box::new(IntegerExpression::Atom(Variable::new("x"))),
-                        ComparisonOp::Gt,
-                        Box::new(IntegerExpression::Const(2)),
+                        ComparisonOp::Geq,
+                        Box::new(IntegerExpression::Const(3)),
                     ))
                     .with_action(
                         Action::new(
@@ -1758,7 +1786,9 @@ mod tests {
         let mut interval_tas = IntervalTABuilder::new(lia_ta, SMTSolverBuilder::default(), vec![])
             .build()
             .unwrap();
+
         let interval_ta = interval_tas.next().unwrap();
+
         assert!(interval_tas.next().is_none());
         let cs_ta = ACSThresholdAutomaton::new(interval_ta);
 
@@ -1784,9 +1814,14 @@ mod tests {
             expected_preds
         );
 
-        let mut interval_state = ACSIntervalState::new_cfg_all_zero_interval(&cs_ta);
-        interval_state[var_x] = ACSInterval(1);
-        interval_state[var_y] = ACSInterval(0);
+        // Interval state: x [2,2], y: [0,1]
+        let mut is_exact_int = ACSIntervalState::new_cfg_all_zero_interval(&cs_ta);
+        is_exact_int[var_x] = ACSInterval(2); // 2,2
+        is_exact_int[var_y] = ACSInterval(0);
+
+        let mut is_open_int = ACSIntervalState::new_cfg_all_zero_interval(&cs_ta);
+        is_open_int[var_x] = ACSInterval(3); // 2,\infty
+        is_open_int[var_y] = ACSInterval(0);
 
         let rule = CSRule {
             id: 0,
@@ -1799,20 +1834,35 @@ mod tests {
             }],
         };
 
-        let got_preds = interval_state.compute_all_predecessor_configs(&rule, &cs_ta);
+        let got_preds_exact = is_exact_int.compute_all_predecessor_configs(&rule, &cs_ta);
 
-        let mut pred_1 = interval_state.clone();
-        pred_1[var_x] = ACSInterval(0);
+        let mut pred_1 = is_exact_int.clone();
+        pred_1[var_x] = ACSInterval(1);
 
-        let expected_preds = HashSet::from([
-            // unchanged
-            interval_state.clone(),
+        let expected_preds_exact = HashSet::from([
             // previous interval
-            pred_1,
+            pred_1.clone(),
         ]);
         assert_eq!(
-            got_preds.into_iter().collect::<HashSet<_>>(),
-            expected_preds
+            got_preds_exact.clone().into_iter().collect::<HashSet<_>>(),
+            expected_preds_exact,
+            "Got: {}\nExpected: {}",
+            join_iterator(got_preds_exact.iter().map(|c| c.display(&cs_ta)), ";"),
+            join_iterator(expected_preds_exact.iter().map(|c| c.display(&cs_ta)), ";"),
+        );
+
+        let got_preds_open = is_open_int.compute_all_predecessor_configs(&rule, &cs_ta);
+        let expected_preds_open = HashSet::from([
+            is_open_int.clone(),
+            // previous interval
+            is_exact_int.clone(),
+        ]);
+        assert_eq!(
+            got_preds_open.clone().into_iter().collect::<HashSet<_>>(),
+            expected_preds_open,
+            "Got: {}\nExpected: {}",
+            join_iterator(got_preds_open.iter().map(|c| c.display(&cs_ta)), ";"),
+            join_iterator(expected_preds_open.iter().map(|c| c.display(&cs_ta)), ";"),
         );
 
         let rule = CSRule {
@@ -1826,11 +1876,11 @@ mod tests {
             }],
         };
 
-        let got_preds = interval_state.compute_all_predecessor_configs(&rule, &cs_ta);
+        let got_preds = is_open_int.compute_all_predecessor_configs(&rule, &cs_ta);
 
-        let mut pred_1 = interval_state.clone();
-        pred_1[var_x] = ACSInterval(2);
-        let expected_preds = HashSet::from([interval_state.clone(), pred_1.clone()]);
+        let mut pred_1 = is_open_int.clone();
+        pred_1[var_x] = ACSInterval(3);
+        let expected_preds = HashSet::from([pred_1.clone()]);
         assert_eq!(
             got_preds.into_iter().collect::<HashSet<_>>(),
             expected_preds
@@ -1847,15 +1897,15 @@ mod tests {
             }],
         };
 
-        let got_preds = interval_state.compute_all_predecessor_configs(&rule, &cs_ta);
-        let mut pred_1 = interval_state.clone();
+        let got_preds = is_open_int.compute_all_predecessor_configs(&rule, &cs_ta);
+        let mut pred_1 = is_open_int.clone();
         pred_1[var_y] = ACSInterval(1);
-        let expected_preds = HashSet::from([interval_state.clone(), pred_1]);
+        let expected_preds = HashSet::from([is_open_int.clone(), pred_1]);
         assert_eq!(
             got_preds.into_iter().collect::<HashSet<_>>(),
             expected_preds
         );
-        assert_eq!(cs_ta.get_all_intervals(&var_x).count(), 3);
+        assert_eq!(cs_ta.get_all_intervals(&var_x).count(), 4);
     }
 
     #[test]
@@ -1914,10 +1964,10 @@ mod tests {
         let var_x = ta.idx_ctx.to_cs_var(&Variable::new("x"));
 
         let mut interval_state = ACSIntervalState::new_cfg_all_zero_interval(&ta);
-        interval_state[var_x] = ACSInterval(2);
+        interval_state[var_x] = ACSInterval(3);
 
         let got_string = interval_state.display(&ta);
-        let expected_string = "x : [3, ∞[, y : [0, 1[";
+        let expected_string = "x : ]2, ∞[, y : [0, 1[";
 
         assert_eq!(&got_string, expected_string);
     }
@@ -1981,7 +2031,7 @@ mod tests {
         interval_state[var_x] = ACSInterval(2);
 
         let got_string = interval_state.display_compact(&ta);
-        let expected_string = "x : [3, ∞[";
+        let expected_string = "x : [2, 2]";
 
         assert_eq!(&got_string, expected_string);
     }
@@ -2153,8 +2203,9 @@ mod tests {
         let cs_ta = ACSThresholdAutomaton::new(interval_ta);
 
         // Cover l3
-        let spec = TargetConfig::new_cover([Location::new("l3")]).unwrap();
-        let got_loc_state = ACSLocState::compute_target_cfg(&spec, &cs_ta);
+        let spec = UpwardsClosedSet::new_cover([Location::new("l3")]);
+        let spec = spec.upwards_closed_clauses().next().unwrap();
+        let got_loc_state = ACSLocState::compute_target_cfg(spec, &cs_ta);
 
         let cs_loc = cs_ta.idx_ctx.to_cs_loc(&Location::new("l3"));
         let mut expected_loc_state = ACSLocState {
@@ -2165,8 +2216,9 @@ mod tests {
         assert_eq!(got_loc_state, expected_loc_state);
 
         // Cover l1
-        let spec = TargetConfig::new_cover([Location::new("l1")]).unwrap();
-        let got_loc_state = ACSLocState::compute_target_cfg(&spec, &cs_ta);
+        let spec = UpwardsClosedSet::new_cover([Location::new("l1")]);
+        let spec = spec.upwards_closed_clauses().next().unwrap();
+        let got_loc_state = ACSLocState::compute_target_cfg(spec, &cs_ta);
 
         let loc_l1 = cs_ta.idx_ctx.to_cs_loc(&Location::new("l1"));
         let mut expected_loc_state = ACSLocState {
@@ -2176,8 +2228,9 @@ mod tests {
         assert_eq!(got_loc_state, expected_loc_state);
 
         // Cover l1 + l2
-        let spec = TargetConfig::new_cover([Location::new("l1"), Location::new("l2")]).unwrap();
-        let got_loc_state = ACSLocState::compute_target_cfg(&spec, &cs_ta);
+        let spec = UpwardsClosedSet::new_cover([Location::new("l1"), Location::new("l2")]);
+        let spec = spec.upwards_closed_clauses().next().unwrap();
+        let got_loc_state = ACSLocState::compute_target_cfg(spec, &cs_ta);
 
         let mut expected_loc_state = ACSLocState {
             loc_state: vec![0, 0, 0],
@@ -2190,13 +2243,13 @@ mod tests {
         assert_eq!(got_loc_state, expected_loc_state);
 
         // Cover l1 + l2 + l3
-        let spec = TargetConfig::new_cover([
+        let spec = UpwardsClosedSet::new_cover([
             Location::new("l1"),
             Location::new("l2"),
             Location::new("l3"),
-        ])
-        .unwrap();
-        let got_loc_state = ACSLocState::compute_target_cfg(&spec, &cs_ta);
+        ]);
+        let spec = spec.upwards_closed_clauses().next().unwrap();
+        let got_loc_state = ACSLocState::compute_target_cfg(spec, &cs_ta);
 
         let expected_loc_state = ACSLocState {
             loc_state: vec![1, 1, 1],
@@ -2205,8 +2258,9 @@ mod tests {
         assert_eq!(got_loc_state, expected_loc_state);
 
         // GeneralCover l3
-        let spec = TargetConfig::new_general_cover([(Location::new("l3"), 42)]).unwrap();
-        let got_loc_state = ACSLocState::compute_target_cfg(&spec, &cs_ta);
+        let spec = UpwardsClosedSet::new_cover_int([(Location::new("l3"), 42)]);
+        let spec = spec.upwards_closed_clauses().next().unwrap();
+        let got_loc_state = ACSLocState::compute_target_cfg(spec, &cs_ta);
 
         let cs_loc = cs_ta.idx_ctx.to_cs_loc(&Location::new("l3"));
         let mut expected_loc_state = ACSLocState {
@@ -2217,13 +2271,13 @@ mod tests {
         assert_eq!(got_loc_state, expected_loc_state);
 
         // GeneralCover l1 + l2 + l3
-        let spec = TargetConfig::new_general_cover([
+        let spec = UpwardsClosedSet::new_cover_int([
             (Location::new("l1"), 42),
             (Location::new("l2"), 42),
             (Location::new("l3"), 42),
-        ])
-        .unwrap();
-        let got_loc_state = ACSLocState::compute_target_cfg(&spec, &cs_ta);
+        ]);
+        let spec = spec.upwards_closed_clauses().next().unwrap();
+        let got_loc_state = ACSLocState::compute_target_cfg(spec, &cs_ta);
 
         let expected_loc_state = ACSLocState {
             loc_state: vec![42, 42, 42],

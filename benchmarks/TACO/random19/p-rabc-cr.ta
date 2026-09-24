@@ -303,21 +303,11 @@ thresholdAutomaton Proc {
 
     /* liveness */
     round_term:
-        <>[](  (s10 + s11 < N - T || locP1 == 0)
-            && (s20 + s21 < N - T || locP2 == 0)
-            && (s30 + s31 + s3bot < N - T || locP3 == 0)
-            && locV0 == 0 && locV1 == 0)
-            ->
-            <> (locV0 == 0 && locV1 == 0
+        <> (locV0 == 0 && locV1 == 0
                     && locP1 == 0 && locP2 == 0 && locP3 == 0);
 
     decide_or_flip:
-        <>[](  (s10 + s11 < N - T || locP1 == 0)
-            && (s20 + s21 < N - T || locP2 == 0)
-            && (s30 + s31 + s3bot < N - T || locP3 == 0)
-            && locV0 == 0 && locV1 == 0)
-            ->
-            <> (locV0 == 0 && locV1 == 0 && locP1 == 0 && locP2 == 0
+        <> (locV0 == 0 && locV1 == 0 && locP1 == 0 && locP2 == 0
                     && locP3 == 0 && locD1 == 0 && locE1 == 0
                     || 
                 locV0 == 0 && locV1 == 0 && locP1 == 0 && locP2 == 0

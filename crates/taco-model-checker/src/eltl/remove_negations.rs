@@ -10,6 +10,8 @@
 //! expressive. Therefore, it is easier to work with and to implement algorithms
 //! for.
 
+use std::fmt;
+
 use taco_threshold_automaton::expressions::{
     ComparisonOp, IntegerExpression, Location, Parameter, Variable,
 };
@@ -198,6 +200,22 @@ impl ELTLExpression {
 impl From<ELTLExpression> for NonNegatedELTLExpression {
     fn from(value: ELTLExpression) -> Self {
         value.remove_negations()
+    }
+}
+
+impl fmt::Display for NonNegatedELTLExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NonNegatedELTLExpression::Globally(expression) => write!(f, "[]({expression})"),
+            NonNegatedELTLExpression::Eventually(expression) => write!(f, "<>({expression})"),
+            NonNegatedELTLExpression::And(lhs, rhs) => write!(f, "({lhs}) && ({rhs})"),
+            NonNegatedELTLExpression::Or(lhs, rhs) => write!(f, "({lhs}) || ({rhs})"),
+            NonNegatedELTLExpression::LocationExpr(lhs, op, rhs) => write!(f, "{lhs} {op} {rhs}"),
+            NonNegatedELTLExpression::VariableExpr(lhs, op, rhs) => write!(f, "{lhs} {op} {rhs}"),
+            NonNegatedELTLExpression::ParameterExpr(lhs, op, rhs) => write!(f, "{lhs} {op} {rhs}"),
+            NonNegatedELTLExpression::True => write!(f, "true"),
+            NonNegatedELTLExpression::False => write!(f, "false"),
+        }
     }
 }
 

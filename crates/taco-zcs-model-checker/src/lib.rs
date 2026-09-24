@@ -8,16 +8,17 @@ pub mod zcs_error_graph;
 
 use taco_interval_ta::IntervalThresholdAutomaton;
 
-use log::info;
+use log::{info, warn};
 
 use taco_model_checker::ModelCheckerContext;
-use taco_model_checker::reachability_specification::{
-    DisjunctionTargetConfig, ReachabilityProperty, TargetConfig,
-};
+use taco_model_checker::internal_spec::ErrorSpec;
+use taco_model_checker::internal_spec::ErrorTarget;
+use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedClause;
+use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
 use taco_threshold_automaton::lia_threshold_automaton::LIAVariableConstraint;
 
 use std::fmt::Display;
-use taco_model_checker::{ModelChecker, ModelCheckerResult, SMTBddContext};
+use taco_model_checker::{ModelChecker, ModelCheckerResult, SMTBddContext, TASpecOf};
 use taco_threshold_automaton::ThresholdAutomaton;
 use zcs::ZCS;
 use zcs::ZCSStates;
@@ -35,7 +36,9 @@ pub struct ZCSModelChecker {
     /// model checker context
     ctx: SMTBddContext,
     /// specifications to be checked
-    ta_spec: Vec<(DisjunctionTargetConfig, Vec<IntervalThresholdAutomaton>)>,
+    ta_spec: TASpecOf<Self>,
+    /// Properties that could not be translated
+    unknown: Vec<String>,
     /// symbolic model checker heuristics
     heuristics: ZCSModelCheckerHeuristics,
 }
@@ -51,9 +54,9 @@ impl ZCSModelChecker {
     fn compute_enabled_shared_variable_states(
         cs: &ZCS,
         ta: &IntervalThresholdAutomaton,
-        target_config: &TargetConfig,
+        target_config: &UpwardsClosedClause,
     ) -> ZCSStates {
-        let var_constr = target_config.get_variable_constraint();
+        let var_constr = target_config.variable_constr();
         let interval_constr = ta
             .get_interval_constraint(var_constr)
             .expect("Failed to get target interval_constr");
@@ -73,23 +76,23 @@ impl ZCSModelChecker {
     fn compute_error_states(
         cs: &ZCS,
         ta: &IntervalThresholdAutomaton,
-        specification: &DisjunctionTargetConfig,
+        specification: &UpwardsClosedSet,
     ) -> Result<ZCSStates, ZCSModelCheckerError> {
         let mut error_states = cs.new_empty_sym_state();
 
-        for target_config in specification.get_target_configs() {
+        for target_config in specification.upwards_closed_clauses() {
             let mut err_state = cs.new_full_sym_state();
 
-            for (loc, _) in target_config.get_locations_to_cover() {
+            for (loc, _) in target_config.locs_to_cover() {
                 err_state = err_state.intersection(&cs.get_sym_state_for_loc(loc));
             }
 
-            for uncov in target_config.get_locations_to_uncover() {
+            for uncov in target_config.locs_to_uncover() {
                 err_state = err_state.intersection(&cs.get_sym_state_for_loc(uncov).complement());
             }
 
             // Variable constraints
-            if target_config.get_variable_constraint() != &LIAVariableConstraint::True {
+            if target_config.variable_constr() != &LIAVariableConstraint::True {
                 let interval_err_state =
                     Self::compute_enabled_shared_variable_states(cs, ta, target_config);
                 err_state = err_state.intersection(&interval_err_state);
@@ -105,8 +108,12 @@ impl ZCSModelChecker {
     fn compute_symbolic_error_graph<'a>(
         &'a self,
         ta: &'a IntervalThresholdAutomaton,
-        spec: &DisjunctionTargetConfig,
+        spec: &ErrorTarget,
     ) -> ZCSErrorGraph<'a> {
+        let ErrorTarget::Reach(spec) = spec else {
+            panic!("unsupported Liveness right now");
+        };
+
         let cs = self.compute_zcs(ta);
 
         let error_states = Self::compute_error_states(&cs, ta, spec)
@@ -121,7 +128,7 @@ impl ModelChecker for ZCSModelChecker {
 
     type ModelCheckerOptions = Option<ZCSModelCheckerHeuristics>;
 
-    type SpecType = ReachabilityProperty;
+    type SpecType = ErrorSpec;
 
     type ThresholdAutomatonType = IntervalThresholdAutomaton;
 
@@ -131,7 +138,8 @@ impl ModelChecker for ZCSModelChecker {
 
     fn initialize(
         opts: Self::ModelCheckerOptions,
-        ta_spec: Vec<(DisjunctionTargetConfig, Vec<Self::ThresholdAutomatonType>)>,
+        ta_spec: TASpecOf<Self>,
+        unknown: Vec<String>,
         ctx: Self::ModelCheckerContext,
     ) -> Result<Self, Self::InitializationError> {
         let heuristics;
@@ -141,11 +149,11 @@ impl ModelChecker for ZCSModelChecker {
             None => {
                 if ta_spec
                     .iter()
-                    .any(|(_, tas)| tas.iter().any(|ta| ta.has_decrements_or_resets()))
+                    .any(|(_, _, tas)| tas.iter().any(|ta| ta.has_decrements_or_resets()))
                 {
                     if ta_spec
                         .iter()
-                        .any(|(_, tas)| tas.iter().any(|ta| ta.has_decrements()))
+                        .any(|(_, _, tas)| tas.iter().any(|ta| ta.has_decrements()))
                     {
                         heuristics = ZCSModelCheckerHeuristics::DecrementAndIncrementHeuristics;
                     } else {
@@ -163,7 +171,7 @@ impl ModelChecker for ZCSModelChecker {
         if opts == Some(ZCSModelCheckerHeuristics::CanonicalHeuristics)
             && ta_spec
                 .iter()
-                .any(|(_, tas)| tas.iter().any(|ta| ta.has_decrements_or_resets()))
+                .any(|(_, _, tas)| tas.iter().any(|ta| ta.has_decrements_or_resets()))
         {
             return Err(ZCSModelCheckerInitializationError::HeuristicsNotSuitable(
                 "Canonical heuristics".to_string(),
@@ -173,6 +181,7 @@ impl ModelChecker for ZCSModelChecker {
         Ok(Self {
             ctx,
             ta_spec,
+            unknown,
             heuristics,
         })
     }
@@ -182,12 +191,18 @@ impl ModelChecker for ZCSModelChecker {
         abort_on_violation: bool,
     ) -> Result<ModelCheckerResult, Self::ModelCheckingError> {
         let mut unsafe_prop = Vec::new();
-        let mut unknown_prop = Vec::new();
+        let mut unknown_prop = self.unknown.clone();
 
-        for (target, tas_to_check) in self.ta_spec.iter() {
+        for (name, target, tas_to_check) in self.ta_spec.iter() {
+            if !matches!(target, ErrorTarget::Reach(_)) {
+                warn!("Property '{name}' ({target}) is not supported by the ZCS model checker");
+                unknown_prop.push(name.clone());
+                continue;
+            }
+
             info!(
                 "Starting to check property '{}', which requires {} model checker run(s).",
-                target.name(),
+                name,
                 tas_to_check.len()
             );
             for ta in tas_to_check.iter() {
@@ -197,7 +212,7 @@ impl ModelChecker for ZCSModelChecker {
                         info!(
                             "The error graph is not empty, but the chosen heuristics only checks for emptiness. Therefore, it is unknown whether the property holds."
                         );
-                        unknown_prop.push(target.name().to_string());
+                        unknown_prop.push(name.clone());
                         continue;
                     }
                     info!("The error graph is not empty, checking for non-spurious error paths.");
@@ -210,12 +225,15 @@ impl ModelChecker for ZCSModelChecker {
                         ));
 
                     if let Some(p) = res.non_spurious_path() {
-                        info!("Property {} is not satisfied!", target.name());
+                        info!("Property {} is not satisfied!", name);
 
-                        unsafe_prop.push((target.name().to_string(), Box::new(p.clone())));
+                        unsafe_prop.push((name.clone(), Box::new(p.clone())));
 
                         if abort_on_violation {
-                            return Ok(ModelCheckerResult::UNSAFE(unsafe_prop));
+                            return Ok(ModelCheckerResult::UNSAFE {
+                                violations: unsafe_prop,
+                                unknown: unknown_prop,
+                            });
                         }
 
                         break;
@@ -229,15 +247,13 @@ impl ModelChecker for ZCSModelChecker {
         }
 
         if !unsafe_prop.is_empty() {
-            return Ok(ModelCheckerResult::UNSAFE(unsafe_prop));
+            return Ok(ModelCheckerResult::UNSAFE {
+                violations: unsafe_prop,
+                unknown: unknown_prop,
+            });
         }
-
-        if self.heuristics == ZCSModelCheckerHeuristics::EmptyErrorGraphHeuristics {
-            if unknown_prop.is_empty() {
-                return Ok(ModelCheckerResult::SAFE);
-            } else {
-                return Ok(ModelCheckerResult::UNKNOWN(unknown_prop));
-            }
+        if !unknown_prop.is_empty() {
+            return Ok(ModelCheckerResult::UNKNOWN(unknown_prop));
         }
 
         Ok(ModelCheckerResult::SAFE)
@@ -256,6 +272,7 @@ impl ZCSModelChecker {
         Self {
             ctx,
             ta_spec: Vec::new(),
+            unknown: Vec::new(),
             heuristics: ZCSModelCheckerHeuristics::CanonicalHeuristics,
         }
     }
@@ -312,7 +329,7 @@ pub struct ZCSModelCheckerContext<'a> {
     /// underlying TA
     ta: &'a IntervalThresholdAutomaton,
     /// underlying specification
-    spec: &'a DisjunctionTargetConfig,
+    spec: &'a ErrorTarget,
     /// indicates if the symbolic model checker should print spurious counterexamples
     print_spurious_ce: bool,
 }
@@ -322,7 +339,7 @@ impl<'a> ZCSModelCheckerContext<'a> {
         ctx: &'a SMTBddContext,
         heuristics: ZCSModelCheckerHeuristics,
         ta: &'a IntervalThresholdAutomaton,
-        spec: &'a DisjunctionTargetConfig,
+        spec: &'a ErrorTarget,
     ) -> Self {
         ZCSModelCheckerContext {
             ctx,
@@ -345,7 +362,7 @@ impl<'a> ZCSModelCheckerContext<'a> {
         self.ta
     }
     /// returns the underlying specification
-    fn spec(&self) -> &DisjunctionTargetConfig {
+    fn spec(&self) -> &ErrorTarget {
         self.spec
     }
     /// returns if spurious counterexamples should be printed
@@ -414,7 +431,7 @@ mod tests {
     use crate::ZCSModelChecker;
     use crate::ZCSModelCheckerHeuristics;
     use std::collections::HashMap;
-    use std::collections::HashSet;
+
     use taco_bdd::BDDManagerConfig;
     use taco_interval_ta::IntervalThresholdAutomaton;
     use taco_interval_ta::builder::IntervalTABuilder;
@@ -423,13 +440,14 @@ mod tests {
     use taco_model_checker::ModelCheckerContext;
     use taco_model_checker::ModelCheckerResult;
     use taco_model_checker::SMTBddContext;
-    use taco_model_checker::reachability_specification::DisjunctionTargetConfig;
-    use taco_model_checker::reachability_specification::TargetConfig;
+
+    use taco_model_checker::internal_spec::ErrorTarget;
+    use taco_model_checker::internal_spec::upwards_closed_set::UpwardsClosedSet;
     use taco_parser::ParseTAWithLTL;
     use taco_parser::bymc::ByMCParser;
     use taco_smt_encoder::SMTSolverBuilder;
     use taco_smt_encoder::SMTSolverBuilderCfg;
-    use taco_threshold_automaton::ModifiableThresholdAutomaton;
+
     use taco_threshold_automaton::expressions::BooleanExpression;
     use taco_threshold_automaton::expressions::ComparisonOp;
     use taco_threshold_automaton::expressions::IntegerExpression;
@@ -452,6 +470,7 @@ mod tests {
             ZCSModelChecker {
                 ctx,
                 ta_spec: Vec::new(),
+                unknown: Vec::new(),
                 heuristics: ZCSModelCheckerHeuristics::CanonicalHeuristics,
             }
         }
@@ -654,9 +673,7 @@ mod tests {
 
         let smc = ZCSModelChecker::new_test(ctx);
 
-        let spec = TargetConfig::new_cover([Location::new("l2")])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover([Location::new("l2")]);
 
         let ata = get_test_ata();
         let cs = smc.compute_zcs(&ata);
@@ -675,12 +692,7 @@ mod tests {
 
         let smc = ZCSModelChecker::new_test(ctx);
 
-        let spec = TargetConfig::new_reach(
-            HashSet::from([Location::new("l2")]),
-            HashSet::from([Location::new("l1")]),
-        )
-        .unwrap()
-        .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_reach([(Location::new("l2"), 1)], [Location::new("l1")]);
 
         let ata = get_test_ata();
         let cs = smc.compute_zcs(&ata);
@@ -704,9 +716,7 @@ mod tests {
 
         let smc = ZCSModelChecker::new_test(ctx);
 
-        let spec = TargetConfig::new_general_cover([(Location::new("l2"), 2)])
-            .unwrap()
-            .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover_int([(Location::new("l2"), 2)]);
 
         let ata = get_test_ata();
         let cs = smc.compute_zcs(&ata);
@@ -725,22 +735,22 @@ mod tests {
 
         let smc = ZCSModelChecker::new_test(ctx);
 
-        let spec = TargetConfig::new_reach_with_var_constr(
-            [(Location::new("l2"), 2)],
-            [],
+        let spec = UpwardsClosedSet::new_var_constraint(
             BooleanExpression::ComparisonExpression(
                 Box::new(IntegerExpression::Atom(Variable::new("x"))),
                 ComparisonOp::Eq,
                 Box::new(IntegerExpression::Const(0)),
-            ),
-        )
-        .unwrap();
+            )
+            .try_into()
+            .unwrap(),
+        ) & UpwardsClosedSet::new_cover_int([(Location::new("l2"), 2)]);
+        let spec = spec.upwards_closed_clauses().next().unwrap();
 
         let ata = get_test_ata();
         let cs = smc.compute_zcs(&ata);
 
         let error_interval_state =
-            ZCSModelChecker::compute_enabled_shared_variable_states(&cs, &ata, &spec);
+            ZCSModelChecker::compute_enabled_shared_variable_states(&cs, &ata, spec);
 
         let i_1 = cs
             .get_sym_state_for_shared_interval(&Variable::new("x"), &Interval::new_constant(0, 1));
@@ -754,17 +764,16 @@ mod tests {
 
         let smc = ZCSModelChecker::new_test(ctx);
 
-        let spec = TargetConfig::new_reach_with_var_constr(
-            [(Location::new("l2"), 2)],
-            [],
-            BooleanExpression::ComparisonExpression(
-                Box::new(IntegerExpression::Atom(Variable::new("x"))),
-                ComparisonOp::Eq,
-                Box::new(IntegerExpression::Const(0)),
-            ),
-        )
-        .unwrap()
-        .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_cover_int([(Location::new("l2"), 2)])
+            & UpwardsClosedSet::new_var_constraint(
+                BooleanExpression::ComparisonExpression(
+                    Box::new(IntegerExpression::Atom(Variable::new("x"))),
+                    ComparisonOp::Eq,
+                    Box::new(IntegerExpression::Const(0)),
+                )
+                .try_into()
+                .unwrap(),
+            );
 
         let ata = get_test_ata();
         let cs = smc.compute_zcs(&ata);
@@ -786,20 +795,13 @@ mod tests {
 
         let smc = ZCSModelChecker::new_test(ctx);
 
-        let cover = TargetConfig::new_cover([Location::new("l2")]).unwrap();
+        let cover = UpwardsClosedSet::new_cover([Location::new("l2")]);
 
-        let general_cover = TargetConfig::new_general_cover([(Location::new("l2"), 2)]).unwrap();
+        let general_cover = UpwardsClosedSet::new_cover_int([(Location::new("l2"), 2)]);
 
-        let reach = TargetConfig::new_general_reach(
-            HashMap::from([(Location::new("l2"), 2)]),
-            HashSet::new(),
-        )
-        .unwrap();
+        let reach = UpwardsClosedSet::new_reach([(Location::new("l2"), 2)], []);
 
-        let spec = DisjunctionTargetConfig::new_from_targets(
-            "test".to_string(),
-            [cover, general_cover, reach],
-        );
+        let spec = cover | general_cover | reach;
 
         let ata = get_test_ata();
         let cs = smc.compute_zcs(&ata);
@@ -820,14 +822,12 @@ mod tests {
 
         let ata = get_test_ata();
 
-        let spec = TargetConfig::new_reach(
-            HashSet::from([Location::new("l2")]),
-            HashSet::from([Location::new("l0"), Location::new("l1")]),
-        )
-        .unwrap()
-        .into_disjunct_with_name("test");
+        let spec = UpwardsClosedSet::new_reach(
+            [(Location::new("l2"), 1)],
+            [Location::new("l0"), Location::new("l1")],
+        );
 
-        let sym_err_graph = smc.compute_symbolic_error_graph(&ata, &spec);
+        let sym_err_graph = smc.compute_symbolic_error_graph(&ata, &ErrorTarget::Reach(spec));
 
         assert!(!sym_err_graph.is_empty());
     }
@@ -895,13 +895,8 @@ mod tests {
         let mc = mc.unwrap();
         let res = mc.verify(true).unwrap();
 
-        // Replicate spec ta that is created for ta builder
-        let mut spec_ta = ta.clone();
-        spec_ta.set_name("test_ta1-test1".into());
-
         // Replicate interval ta for path builder
-
-        let path = PathBuilder::new(spec_ta)
+        let path = PathBuilder::new(ta)
             .add_parameter_assignment(HashMap::from([
                 (Parameter::new("n"), 1),
                 (Parameter::new("f"), 0),
@@ -1046,7 +1041,7 @@ mod tests {
 
         let res = match res {
             ModelCheckerResult::SAFE => unreachable!("checked above"),
-            ModelCheckerResult::UNSAFE(v) => {
+            ModelCheckerResult::UNSAFE { violations: v, .. } => {
                 assert_eq!(v.len(), 1);
                 *v[0].1.clone()
             }
@@ -1125,13 +1120,9 @@ mod tests {
         let mc = mc.unwrap();
         let res = mc.verify(true).unwrap();
 
-        // Replicate spec ta that is created for ta builder
-        let mut spec_ta = ta.clone();
-        spec_ta.set_name("test_ta1-test1".into());
-
         // Replicate interval ta for path builder
 
-        let path = PathBuilder::new(spec_ta)
+        let path = PathBuilder::new(ta)
             .add_parameter_assignment(HashMap::from([
                 (Parameter::new("n"), 1),
                 (Parameter::new("f"), 0),
@@ -1230,7 +1221,7 @@ mod tests {
 
         let res = match res {
             ModelCheckerResult::SAFE => unreachable!("checked above"),
-            ModelCheckerResult::UNSAFE(v) => {
+            ModelCheckerResult::UNSAFE { violations: v, .. } => {
                 assert_eq!(v.len(), 1);
                 *v[0].1.clone()
             }
@@ -1244,5 +1235,107 @@ mod tests {
             res,
             path
         );
+    }
+
+    /// Check that results are reported per property name, and that
+    /// properties the model checker cannot decide are reported as unknown
+    #[test]
+    fn test_result_reporting_per_property() {
+        let run = |specs: &str| {
+            let (ta, spec) = ByMCParser::new()
+                .parse_ta_and_spec(&format!(
+                    "
+            skel test_ta1 {{
+                shared var1;
+                parameters n, f;
+
+                assumptions (1) {{
+                    n > 3 * f;
+                    n == 1;
+                }}
+
+                locations (2) {{
+                    loc1 : [0];
+                    loc2 : [1];
+                    loc3 : [2];
+                }}
+
+                inits (1) {{
+                    loc1 == n - f;
+                    loc2 == 0;
+                    loc3 == 0;
+                    var1 == 0;
+                }}
+
+                rules (4) {{
+                    0: loc1 -> loc2
+                        when(true)
+                        do {{}};
+                }}
+
+                specifications (1) {{
+                    {specs}
+                }}
+            }}
+                    "
+                ))
+                .unwrap();
+
+            let mc = ZCSModelChecker::new(
+                Some((
+                    Some(SMTSolverBuilderCfg::new_z3()),
+                    Some(BDDManagerConfig::new_cudd()),
+                )),
+                Some(ZCSModelCheckerHeuristics::CanonicalHeuristics),
+                Vec::new(),
+                ta,
+                spec.expressions().iter().cloned(),
+            );
+            mc.expect("Failed to create model checker")
+                .verify(false)
+                .expect("Failed to model check")
+        };
+
+        // Violated in the initial configuration, i.e., by a path without
+        // any transition
+        let res = run("init_reach: [](loc1 == 0);");
+        let ModelCheckerResult::UNSAFE { violations, .. } = res else {
+            panic!("Expected UNSAFE, got {res:?}");
+        };
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].0, "init_reach");
+        assert_eq!(violations[0].1.transitions().count(), 0);
+
+        let res = run("
+            holds: [](loc3 == 0);
+            reach_violated: [](loc2 == 0);
+            init_violated: loc1 == 0;
+            untranslatable: [](<>(loc1 == 0 || [](loc2 == 0)));
+        ");
+        let ModelCheckerResult::UNSAFE {
+            violations,
+            unknown,
+        } = res
+        else {
+            panic!("Expected UNSAFE, got {res:?}");
+        };
+        assert_eq!(unknown, vec!["untranslatable"]);
+        let mut names = violations
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .collect::<Vec<_>>();
+        names.sort();
+        assert_eq!(names, vec!["init_violated", "reach_violated"]);
+
+        let res = run("
+            holds: [](loc3 == 0);
+            liveness: <>(loc2 != 0);
+            untranslatable: [](<>(loc1 == 0 || [](loc2 == 0)));
+        ");
+        let ModelCheckerResult::UNKNOWN(mut unknown) = res else {
+            panic!("Expected UNKNOWN, got {res:?}");
+        };
+        unknown.sort();
+        assert_eq!(unknown, vec!["liveness", "untranslatable"]);
     }
 }

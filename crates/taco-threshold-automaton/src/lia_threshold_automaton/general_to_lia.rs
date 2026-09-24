@@ -296,9 +296,9 @@ mod tests {
                                     SingleAtomConstraint::new(
                                         Variable::new("var1"),
                                         ThresholdConstraint::new(
-                                            ThresholdCompOp::Lt,
+                                            ThresholdCompOp::Leq,
                                             Vec::<(Parameter, Fraction)>::new(),
-                                            2,
+                                            1,
                                         ),
                                     ),
                                 )),
@@ -320,9 +320,9 @@ mod tests {
                                     SingleAtomConstraint::new(
                                         Variable::new("var2"),
                                         ThresholdConstraint::new(
-                                            ThresholdCompOp::Lt,
+                                            ThresholdCompOp::Leq,
                                             [(Parameter::new("n"), 1)],
-                                            1,
+                                            0,
                                         ),
                                     ),
                                 )),
@@ -360,9 +360,9 @@ mod tests {
                     SingleAtomConstraint::new(
                         Variable::new("var1"),
                         ThresholdConstraint::new(
-                            ThresholdCompOp::Lt,
+                            ThresholdCompOp::Leq,
                             Vec::<(Parameter, Fraction)>::new(),
-                            2,
+                            1,
                         ),
                     ),
                 )),

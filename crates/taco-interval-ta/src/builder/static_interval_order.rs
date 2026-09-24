@@ -268,6 +268,14 @@ impl<T: HasAssociatedIntervals, U: DefinesStaticIntervalOrder<T>> IntervalOrderF
         let result = match thr.get_op() {
             ThresholdCompOp::Geq => intervals[idx..].to_vec(),
             ThresholdCompOp::Lt => intervals[..idx].to_vec(),
+            ThresholdCompOp::Gt => {
+                let idx = idx + 1;
+                intervals[idx..].to_vec()
+            }
+            ThresholdCompOp::Leq => {
+                let idx = idx + 1;
+                intervals[..idx].to_vec()
+            }
         };
 
         Ok(result)
@@ -295,56 +303,36 @@ impl IntervalOrder for StaticIntervalOrder {
             ib_1.encode_comparison_to_boolean_expression(ComparisonOp::Eq, ib_2)
         });
 
-        let single_var_constr = self.single_var_order.values().flat_map(|intervals| {
-            intervals
-                .iter()
-                .filter(|i| i.ub() != &IntervalBoundary::Infty)
-                .map(|interval| {
-                    if interval.lb() == &IntervalBoundary::Infty {
-                        debug_assert!(false, "Interval with lower bound ∞ found");
-                        return BooleanExpression::False;
-                    }
+        // Exact intervals [b, b] do not impose an order constraint
+        let interval_constr = self
+            .single_var_order
+            .values()
+            .chain(self.multi_var_order.values())
+            .flat_map(|intervals| {
+                intervals
+                    .iter()
+                    .filter(|i| i.ub() != &IntervalBoundary::Infty)
+                    .filter(|i| i.lb() != i.ub() || i.is_left_open() || i.is_right_open())
+                    .map(|interval| {
+                        if interval.lb() == &IntervalBoundary::Infty {
+                            debug_assert!(false, "Interval with lower bound ∞ found");
+                            return BooleanExpression::False;
+                        }
 
-                    let lb = interval
-                        .lb()
-                        .get_threshold()
-                        .expect("Infinite interval in order");
-                    let ub = interval
-                        .ub()
-                        .get_threshold()
-                        .expect("Infinite interval in order");
+                        let lb = interval
+                            .lb()
+                            .get_threshold()
+                            .expect("Infinite interval in order");
+                        let ub = interval
+                            .ub()
+                            .get_threshold()
+                            .expect("Infinite interval in order");
 
-                    lb.encode_comparison_to_boolean_expression(ComparisonOp::Lt, ub)
-                })
-        });
+                        lb.encode_comparison_to_boolean_expression(ComparisonOp::Lt, ub)
+                    })
+            });
 
-        let multi_var_constr = self.multi_var_order.values().flat_map(|intervals| {
-            intervals
-                .iter()
-                .filter(|i| i.ub() != &IntervalBoundary::Infty)
-                .map(|interval| {
-                    if interval.lb() == &IntervalBoundary::Infty {
-                        debug_assert!(false, "Interval with lower bound ∞ found");
-                        return BooleanExpression::False;
-                    }
-
-                    let lb = interval
-                        .lb()
-                        .get_threshold()
-                        .expect("Infinite interval in order");
-                    let ub = interval
-                        .ub()
-                        .get_threshold()
-                        .expect("Infinite interval in order");
-
-                    lb.encode_comparison_to_boolean_expression(ComparisonOp::Lt, ub)
-                })
-        });
-
-        eq_constr
-            .chain(single_var_constr)
-            .chain(multi_var_constr)
-            .collect()
+        eq_constr.chain(interval_constr).collect()
     }
 }
 
@@ -403,10 +391,15 @@ impl StaticIntervalOrderBuilder {
     }
 
     /// Add an interval found for a single variable
-    pub fn add_single_variable_interval(self, var: &Variable, interval: &IntervalBoundary) -> Self {
+    pub fn add_single_variable_interval(
+        self,
+        var: &Variable,
+        interval: &IntervalBoundary,
+        needs_exact: bool,
+    ) -> Self {
         let orders = self
             .order_generator
-            .extend_order_with_interval_for_single_variable(var, interval);
+            .extend_order_with_interval_for_single_variable(var, interval, needs_exact);
 
         StaticIntervalOrderBuilder {
             order_generator: orders,
@@ -419,10 +412,11 @@ impl StaticIntervalOrderBuilder {
         self,
         sum: &WeightedSum<Variable>,
         interval: &IntervalBoundary,
+        needs_exact: bool,
     ) -> Self {
         let orders = self
             .order_generator
-            .extend_order_with_interval_for_multi_variable(sum, interval);
+            .extend_order_with_interval_for_multi_variable(sum, interval, needs_exact);
 
         StaticIntervalOrderBuilder {
             order_generator: orders,
@@ -968,6 +962,36 @@ mod tests {
             Box::new(IntegerExpression::Param(Parameter::new("n"))),
         );
         assert!(exprs.contains(&expected_expr_2));
+    }
+
+    #[test]
+    fn test_order_to_boolean_expr_skips_exact_intervals() {
+        let sum = WeightedSum::new(BTreeMap::from([
+            (Variable::new("x"), 1),
+            (Variable::new("y"), 1),
+        ]));
+        let ib = IntervalBoundary::from_const(2);
+        let intervals = vec![
+            Interval::new(IntervalBoundary::from_const(0), false, ib.clone(), true),
+            Interval::new(ib.clone(), false, ib.clone(), false),
+            Interval::new(ib, true, IntervalBoundary::Infty, true),
+        ];
+
+        let order = StaticIntervalOrder {
+            single_var_order: HashMap::from([(Variable::new("z"), intervals.clone())]),
+            multi_var_order: HashMap::from([(sum, intervals)]),
+            equal_boundaries: HashMap::new(),
+        };
+
+        // `[2, 2]` must not yield the unsatisfiable constraint `2 < 2`
+        let exact = BooleanExpression::ComparisonExpression(
+            Box::new(IntegerExpression::Const(2)),
+            ComparisonOp::Lt,
+            Box::new(IntegerExpression::Const(2)),
+        );
+        let exprs = order.order_to_boolean_expr::<Parameter>();
+        assert_eq!(exprs.len(), 2);
+        assert!(!exprs.contains(&exact));
     }
 
     #[test]
